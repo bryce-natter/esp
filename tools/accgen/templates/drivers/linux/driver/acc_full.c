@@ -104,9 +104,16 @@ static struct esp_driver <accelerator_name>_driver = {
 	},
 	.xfer_input_ok	= <accelerator_name>_xfer_input_ok,
 	.prep_xfer	= <accelerator_name>_prep_xfer,
-	.ioctl_cm	= <ACC_FULL_NAME>_IOC_ACCESS,
+	.ioctl_cm	= LIST_HEAD(ioctl_cm_list),
 	.arg_size	= sizeof(struct <acc_full_name>_access),
 };
+
+static struct esp_ioctl_cm <accelerator_name>_ioctl_cm = {
+	.list INIT_LIST_HEAD(<accelerator_name>_ioctl_cm.list),
+	.cm = <ACC_FULL_NAME>_IOC_ACCESS
+};
+
+list_add(<accelerator_name>_driver.ioctl_cm, <accelerator_name>_ioctl_cm);
 
 static int __init <accelerator_name>_init(void)
 {

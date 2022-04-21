@@ -339,7 +339,7 @@ static long esp_p2p_init(struct esp_device *esp, struct esp_access *access)
 	return 0;
 }
 
-static int esp_access_ioctl(struct esp_device *esp, void __user *argp)
+static int esp_access_ioctl(struct esp_device *esp, struct esp_ioctl_cm *ioctl_cm, void __user *argp)
 {
 	struct contig_desc *contig;
 	struct esp_access *access;
@@ -373,6 +373,11 @@ static int esp_access_ioctl(struct esp_device *esp, void __user *argp)
 	}
 
 	if (esp->driver->xfer_input_ok && !esp->driver->xfer_input_ok(esp, arg)) {
+		rc = -EINVAL;
+		goto out;
+	}
+	
+	if (ioctl_cm->handle && !ioctl_cm->handle(esp, arg)) {
 		rc = -EINVAL;
 		goto out;
 	}
@@ -464,6 +469,7 @@ out:
 static long esp_do_ioctl(struct file *file, unsigned int cm, void __user *arg)
 {
 	struct esp_device *esp = file->private_data;
+	struct esp_ioctl_cm *ioctl_cm;
 
 	switch (cm) {
 	case ESP_IOC_RUN:
@@ -471,8 +477,10 @@ static long esp_do_ioctl(struct file *file, unsigned int cm, void __user *arg)
 	case ESP_IOC_FLUSH:
 		return esp_flush_ioctl(esp, arg);
 	default:
-		if (cm == esp->driver->ioctl_cm)
-			return esp_access_ioctl(esp, arg);
+		list_for_each_entry(ioctl_cm, esp->driver->ioctl_cm, list) {
+			if (cm == ioctl_cm->cm)
+				return esp_access_ioctl(esp, ioctl_cm, arg);
+		}
 		return -ENOTTY;
 	}
 }

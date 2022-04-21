@@ -54,6 +54,10 @@ struct esp_access {
 
 struct esp_device;
 
+struct esp_ioctl_cm {
+	struct list_head list;
+	unsigned int cm;
+}
 struct esp_driver {
 	struct class *class;
 	dev_t devno;
@@ -61,7 +65,8 @@ struct esp_driver {
 	struct platform_driver plat;
 	bool (*xfer_input_ok)(struct esp_device *esp, void *arg);
 	void (*prep_xfer)(struct esp_device *esp, void *arg);
-	unsigned int ioctl_cm;
+	//unsigned int ioctl_cm;
+	struct esp_ioctl_cm ioctl_cm;
 	size_t arg_size;
 };
 
