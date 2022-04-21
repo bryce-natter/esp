@@ -57,7 +57,9 @@ struct esp_device;
 struct esp_ioctl_cm {
 	struct list_head list;
 	unsigned int cm;
-}
+	void (*handle)(struct esp_device *esp, void *arg);
+};
+
 struct esp_driver {
 	struct class *class;
 	dev_t devno;
