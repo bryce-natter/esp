@@ -1,4 +1,5 @@
 #include "prc_utils.h"
+#include "monitors.h"
 #include "soc_defs.h"
 #include "soc_locs.h"
 #include "pbs_map.h"
