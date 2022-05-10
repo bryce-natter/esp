@@ -35,7 +35,7 @@ static struct of_device_id esp_prc_device_ids[] = {
 		.name = "XILINX_PRC",
 	},
 	{
-		.name = "eb_100",
+		.name = "ef_30",
 	},
 	{
 		.compatible = "xilinx,prc",
