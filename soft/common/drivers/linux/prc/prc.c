@@ -6,6 +6,7 @@
 
 
 #include "prc.h"
+#include <asm/byteorder.h>
 //#include "soc_defs.h"
 //#include "soc_locs.h"
 //#include "pbs_map.h"
@@ -35,10 +36,10 @@ static struct of_device_id esp_prc_device_ids[] = {
 		.name = "XILINX_PRC",
 	},
 	{
-		.name = "eb_100",
+		.name = "ef_031",
 	},
 	{
-		.compatible = "xilinx,prc",
+		.compatible = "sld,prc",
 	},
 	{ },
 };
@@ -57,7 +58,7 @@ static struct of_device_id esp_prc_device_ids[] = {
 //
 //	dev_addr = (unsigned) dev->addr;
 //	dev_addr_trunc = (dev_addr << 12) >> 12;
-//	//printf("device address %0x truncated addr %0x \n", dev_addr, dev_addr_trunc);
+//	//printf("device address 0x%08x truncated addr 0x%08x \n", dev_addr, dev_addr_trunc);
 //	//#ifdef ACCS_PRESENT
 //	//Obtain tile id
 //	for (i = 0; i < SOC_NACC; i++) {
@@ -76,7 +77,7 @@ static struct of_device_id esp_prc_device_ids[] = {
 //
 //	//compute apb address for tile decoupler
 //	(*decoupler).addr = APB_BASE_ADDR + (monitor_base + tile_id * 0x200);
-//	//printf("tile_id is %0x decoupler addr is %0x \n", tile_id, (unsigned) esp_tile_decoupler.addr);
+//	//printf("tile_id is 0x%08x decoupler addr is 0x%08x \n", tile_id, (unsigned) esp_tile_decoupler.addr);
 //	return 0;
 //}
 //
@@ -94,15 +95,21 @@ static struct of_device_id esp_prc_device_ids[] = {
 
 static int prc_start(void)
 {
-	int prc_status;
+	uint32_t prc_status;
+	uint32_t bit1 = 1;
 
-	//printf("PRC: restarting PRC\n");
-	PRC_WRITE(prc_dev, 0x0, 0x1);
+	bit1 = cpu_to_le32(bit1);
+
+	pr_info("PRC (start): restarting PRC\n");
+	PRC_WRITE(prc_dev, 0x0, bit1);
 
 	prc_status = PRC_READ(prc_dev, 0x0);
+	prc_status = le32_to_cpu(prc_status);
+	pr_info("PRC (start): read status:0x%08x \n", prc_status);
 	prc_status &= (1<<7);
+	pr_info("PRC (start): status check:0x%08x \n", prc_status);
 	if (prc_status) {
-		//printf("PRC: error starting controller \n");
+		pr_info("PRC (start): error starting controller \n");
 		return 1;
 	}
 
@@ -112,78 +119,115 @@ static int prc_start(void)
 
 static int prc_stop(void)
 {
-	int prc_status;
+	uint32_t prc_status;
 
-	//printf("PRC: Shutting down PRC\n");
+	//pr_info("PRC: Shutting down PRC\n");
 	PRC_WRITE(prc_dev, 0x0, 0x0);
 
 	prc_status = PRC_READ(prc_dev, 0x0);
+	prc_status = le32_to_cpu(prc_status);
+	pr_info("PRC (stop): read status:0x%08x \n", prc_status);
 	prc_status &= (1<<7);
 	if (!prc_status) {
-		//printf("PRC: error shutting controller \n");
+		pr_info("PRC (stop): error shutting controller \n");
 		return 1;
 	}
+	pr_info("PRC (stop): success shutting controller \n");
 
 	return 0;
 }
 
-static int prc_set_trigger(int pbs_id)
+static int prc_set_trigger(void *pbs_addr, uint32_t pbs_size)
 {
+	uint32_t le_addr = cpu_to_le32((uint32_t)pbs_addr);
+	uint32_t le_size = cpu_to_le32(pbs_size);
 	if (!prc_stop()) {
 		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x0, 0x0);
-		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x4, PBS_BASE_ADDR + pb_map[pbs_id].pbs_addr);
-		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x8, pb_map[pbs_id].pbs_size);
+		pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.iomem + TRIGGER_OFFSET + 0x0, 0x0);
+
+		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x4, le_addr);
+		pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.iomem + TRIGGER_OFFSET + 0x4, le_addr);
+
+		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x8, le_size);
+		pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.iomem + TRIGGER_OFFSET + 0x8, le_size);
+
+		pr_info("PRC: Trigger armed \n");
 		return 0;
-		//printf("PRC: Trigger armed \n");
-	} else
+	} else {
+		pr_info("PRC: Error arming trigger \n");
 		return 1;
-		//printf("PRC: Error arming trigger \n");
+	}
 }
 
 
-static int prc_reconfigure(void)
+static int prc_reconfigure(pbs_map *pbs, void *pbs_file)
 {
 	//   int status = 0;
 
 	//init_prc();
-	prc_set_trigger(0);//pbs_id);
+	prc_set_trigger(pbs_file, pbs->pbs_size);//pbs_id);
 
 	if(!(prc_start())) {
 		//decouple_acc(dev, 1); //decouple tile
-		//printf("PRC: Starting Reconfiguration \n");
+		pr_info("PRC: Starting Reconfiguration \n");
 		PRC_WRITE(prc_dev, 0x4, 0); //send reconfig trigger
 		return 0;
 	}
 
 	else {
-		//fprintf(stderr, "PRC: Error reconfiguring FPGA \n");
+		pr_info("PRC: Error reconfiguring FPGA \n");
 		return 1;
 		//exit(EXIT_FAILURE);
 	}
+
 	/*
 	while(!status){
 	status = PRC_READ(prc_dev, 0x0);
 	status &= (1 << 2);
 	}
 	*/
-	//printf("PRC: Reconfigured FPGA \n");
+	//pr_info("PRC: Reconfigured FPGA \n");
 }
 
 
 static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
+	pbs_map pbs;
+	void *pbs_file;
+
 	switch (cmd) {
-		case PRC_START:
-			prc_start();
-			break;
-		case PRC_STOP:
-			prc_stop();
-			break;
-		case PRC_SET_TRIGGER:
-			prc_set_trigger(0);
-			break;
+		//These probably shouldn't be called from userspace actually
+		//case PRC_START:
+		//	prc_start();
+		//	break;
+		//case PRC_STOP:
+		//	prc_stop();
+		//	break;
+		//case PRC_SET_TRIGGER:
+		//	prc_set_trigger(0);
+		//	break;
 		case PRC_RECONFIGURE:
-			prc_reconfigure();
+			if (copy_from_user(&pbs, (pbs_map *) arg, sizeof(pbs_map))) {
+				pr_info("Failed to copy pbs_map\n");
+				return -EACCES;
+			}
+
+			pr_info("pbs_size is 0x%08x\n", pbs.pbs_size);
+			if (!pbs.pbs_size)
+				return -EACCES;
+
+			pbs_file = kmalloc(pbs.pbs_size, GFP_DMA | GFP_KERNEL);
+			if (!pbs_file)
+				return -ENOMEM;
+
+			if (copy_from_user(pbs_file, pbs.pbs_mmap, pbs.pbs_size)) {
+				kfree(pbs_file);
+				return -EACCES;
+			}
+
+			pr_info("Read Arguments...\n");
+
+			prc_reconfigure(&pbs, pbs_file);
 			break;
 		default:
 			return -EINVAL;

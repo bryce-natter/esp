@@ -27,6 +27,7 @@
 #endif
 #endif /* __KERNEL__ */    
 
+
 #include <esp.h>           
 
 #define PRC_MAGIC 		'P'
@@ -35,16 +36,20 @@
 #define MONITOR_BASE_ADDR 	0x90180
 #define PBS_BASE_ADDR		0x0
 
-#define PRC_SET_TRIGGER	_IOW(PRC_MAGIC, 0, unsigned long)
-#define PRC_RECONFIGURE	_IOW(PRC_MAGIC, 1, unsigned long)
-#define PRC_START	_IO(PRC_MAGIC, 2)
-#define PRC_STOP	_IO(PRC_MAGIC, 3)
 
 #define LEN_DEVNAME_MAX 32
 typedef struct pbs_map {
-    char name [LEN_DEVNAME_MAX];    
-    unsigned pbs_size;
-    unsigned long long pbs_addr;
-    unsigned pbs_tile_id;
+    char	name [LEN_DEVNAME_MAX];    
+    void	*pbs_addr;
+    uint32_t	pbs_size;
+    uint32_t	pbs_tile_id;
+    void	*pbs_mmap; //userspace
 }pbs_map;
+
+#define PRC_RECONFIGURE	_IOW(PRC_MAGIC, 0, pbs_map *)
+
+//#define PRC_SET_TRIGGER	_IOW(PRC_MAGIC, 0, unsigned long)
+//#define PRC_START	_IO(PRC_MAGIC, 2)
+//#define PRC_STOP	_IO(PRC_MAGIC, 3)
+
 #endif /* _PRC_H_ */

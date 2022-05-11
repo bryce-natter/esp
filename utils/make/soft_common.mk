@@ -61,7 +61,11 @@ sysroot-update: $(SOFT_BUILD)/linux-build/vmlinux $(ESP_CFG_BUILD)/socmap.vhd so
 	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/esp_private_cache.ko
 	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/esp.ko
 	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/prc.ko
+	@mkdir -p $(BUILD_DRIVERS)/prc/linux/app
+	@CPU_ARCH=$(CPU_ARCH) DRIVERS=$(DRV_LINUX) BUILD_PATH=$(BUILD_DRIVERS)/prc/linux/app DESIGN_PATH=$(DESIGN_PATH) $(MAKE) -C $(DRV_LINUX)/prc/app
+	@mkdir -p $(SOFT_BUILD)/sysroot/applications/prc; cp $(BUILD_DRIVERS)/prc/linux/app/*.exe $(SOFT_BUILD)/sysroot/applications/prc
 	@mkdir -p $(BUILD_DRIVERS)/dvi/linux/app
+	@mkdir -p $(SOFT_BUILD)/sysroot/bitstreams/; cp $(SOFT_BUILD)/../../vivado_dpr/Bitstreams/* $(SOFT_BUILD)/sysroot/bitstreams
 	@CPU_ARCH=$(CPU_ARCH) DRIVERS=$(DRV_LINUX) BUILD_PATH=$(BUILD_DRIVERS)/dvi/linux/app DESIGN_PATH=$(DESIGN_PATH) $(MAKE) -C $(DRV_LINUX)/dvi/app
 	@mkdir -p $(SOFT_BUILD)/sysroot/applications/dvi; cp $(BUILD_DRIVERS)/dvi/linux/app/*.exe $(SOFT_BUILD)/sysroot/applications/dvi
 	@$(MAKE) acc-driver
@@ -72,6 +76,7 @@ sysroot-update: $(SOFT_BUILD)/linux-build/vmlinux $(ESP_CFG_BUILD)/socmap.vhd so
 
 sysroot-clean:
 	$(QUIET_CLEAN)$(RM) $(SOFT_BUILD)/sysroot.files $(SOFT_BUILD)/sysroot.cpio
+	@$(MAKE) --quiet -C $(DRV_LINUX)/prc/app BUILD_PATH=$(BUILD_DRIVERS)/prc/linux/app clean DRIVERS=$(DRV_LINUX)
 	@$(MAKE) --quiet -C $(DRV_LINUX)/dvi/app BUILD_PATH=$(BUILD_DRIVERS)/dvi/linux/app clean DRIVERS=$(DRV_LINUX)
 	@if test -e $(SOFT_BUILD)/linux-build; then \
 		$(MAKE) --quiet acc-driver-clean; \
