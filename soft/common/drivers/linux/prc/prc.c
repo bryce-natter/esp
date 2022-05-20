@@ -168,9 +168,6 @@ static int prc_reconfigure(pbs_map *pbs, void *pbs_file)
 	//   int status = 0;
 
 	//init_prc();
-	//
-
-
 	prc_set_trigger(pbs_file, pbs->pbs_size);//pbs_id);
 
 	if(!(prc_start())) {
@@ -219,6 +216,13 @@ int decoupler(int tile_id, int status)
 	iounmap(decoupler);
 	return ret;
 
+	/*
+	while(!status){
+	status = PRC_READ(prc_dev, 0x0);
+	status &= (1 << 2);
+	}
+	*/
+	//pr_info("PRC: Reconfigured FPGA \n");
 }
 
 
