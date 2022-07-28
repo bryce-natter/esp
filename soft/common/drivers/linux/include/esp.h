@@ -51,6 +51,9 @@ struct esp_access {
 #define LLC_SIZE 524288
 #define LLC_SIZE_SPLIT 262144 
 
+extern struct esp_driver *prc_fir_driver;
+extern struct esp_driver *prc_mac_driver;
+extern struct platform_device *pd;
 
 struct esp_device;
 
@@ -63,6 +66,7 @@ struct esp_driver {
 	void (*prep_xfer)(struct esp_device *esp, void *arg);
 	unsigned int ioctl_cm;
 	size_t arg_size;
+	struct platform_device *pdev;
 };
 
 struct esp_device {

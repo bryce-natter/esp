@@ -89,6 +89,7 @@ static int __exit <accelerator_name>_remove(struct platform_device *pdev)
 
 	esp_device_unregister(esp);
 	kfree(<accelerator_name>);
+	<accelerator_name>_devs--;
 	return 0;
 }
 

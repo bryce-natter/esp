@@ -38,24 +38,37 @@
 
 
 #define LEN_DEVNAME_MAX 32
-typedef struct pbs_map {
-	char	name [LEN_DEVNAME_MAX];    
-	void	*pbs_addr;
+
+#ifdef __KERNEL__
+typedef struct pbs_struct {
+	struct list_head	list;
+	char			name [LEN_DEVNAME_MAX];
+	void			*file;
+	void			*phys_loc;
+	uint32_t		size;
+	uint32_t		tile_id;
+}pbs_struct;
+#endif
+
+//extern struct esp_driver *tile_drivers[128] = {0};
+
+
+
+typedef struct pbs_arg {
+	char		name [LEN_DEVNAME_MAX];    
 	uint32_t	pbs_size;
 	uint32_t	pbs_tile_id;
-	void	*pbs_mmap; //userspace
-}pbs_map;
+	void		*pbs_mmap; //userspace
+}pbs_arg;
 
 typedef struct decouple_arg {
 	int	tile_id;
 	char	status;
 }decouple_arg;
 
-#define PRC_RECONFIGURE	_IOW(PRC_MAGIC, 0, pbs_map *)
-#define DECOUPLE	_IOW(PRC_MAGIC, 1, pbs_map *)
+#define PRC_RECONFIGURE	_IOW(PRC_MAGIC, 0, struct pbs_arg *)
+#define DECOUPLE	_IOW(PRC_MAGIC, 1, struct pbs_arg *)
+#define PRC_LOAD_BS	_IOW(PRC_MAGIC, 2, struct pbs_arg *)
 
-//#define PRC_SET_TRIGGER	_IOW(PRC_MAGIC, 0, unsigned long)
-//#define PRC_START	_IO(PRC_MAGIC, 2)
-//#define PRC_STOP	_IO(PRC_MAGIC, 3)
 
 #endif /* _PRC_H_ */

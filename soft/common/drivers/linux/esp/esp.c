@@ -528,12 +528,19 @@ static void esp_destroy_cdev(struct esp_device *esp, int ndev)
 	cdev_del(&esp->cdev);
 }
 
+struct platform_device *pd = 0;
+EXPORT_SYMBOL_GPL(pd);
 int esp_device_register(struct esp_device *esp, struct platform_device *pdev)
 {
 	struct resource *res;
 	int rc;
+	
+	pd = pdev;
+	pr_info("esp: %ld\n", esp);
+	pr_info("pd: %ld\n", pd);
 
 	esp->pdev = &pdev->dev;
+	esp->driver->pdev = pdev;
 	mutex_init(&esp->lock);
 	init_completion(&esp->completion);
 
@@ -568,17 +575,27 @@ int esp_device_register(struct esp_device *esp, struct platform_device *pdev)
 	/* set type of coherence to no coherence by default */
 	esp->coherence = ACC_COH_NONE;
 
-	dev_info(esp->pdev, "l2_size: %zu, llc_size %zu, llc_banks: %lu.\n",
-		cache_l2_size, cache_llc_size, cache_llc_banks);
+	dev_info(esp->pdev, "l2_size: %zu, llc_size %zu, llc_banks: %lu.\n"
+			"iomem:%lu devno: %lu\n"
+			"footprint:%d inplace: %d\n",
+		cache_l2_size, cache_llc_size, cache_llc_banks, 
+		esp->iomem, esp->driver->devno,
+		esp->footprint, esp->in_place);
 
 	/* Add device to ESP devices list */
 	spin_lock(&esp_devices_lock);
 	list_add(&esp->list, &esp_devices);
 	spin_unlock(&esp_devices_lock);
 
+	dev_info(esp->pdev, "searching tiles\n");
+	unsigned y = esp_get_y(esp);
+	unsigned x = esp_get_x(esp);
+	dev_info(esp->pdev, " on tile %d,%d\n", x, y);
+
 	dev_info(esp->pdev, "device registered.\n");
 	platform_set_drvdata(pdev, esp);
 	return 0;
+
 
 out_iomem:
 	free_irq(esp->irq, esp->pdev);
@@ -658,6 +675,12 @@ void esp_driver_unregister(struct esp_driver *driver)
 	esp_sysfs_device_remove(driver);
 }
 EXPORT_SYMBOL_GPL(esp_driver_unregister);
+
+struct esp_driver *prc_fir_driver = 0;
+struct esp_driver *prc_mac_driver = 0;
+EXPORT_SYMBOL_GPL(prc_mac_driver);
+EXPORT_SYMBOL_GPL(prc_fir_driver);
+
 
 static int __init esp_init(void)
 {

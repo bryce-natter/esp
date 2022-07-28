@@ -3,26 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-
-
-#include "prc.h"
 #include <asm/byteorder.h>
-//#include <asm/io.h>
 #include <linux/io.h>
-//#include "soc_defs.h"
-//#include "soc_locs.h"
-//#include "pbs_map.h"
+#include <linux/list.h>
+#include <linux/string.h>
+#include "prc.h"
+#include <esp.h>
 
 #define DRV_NAME "prc"
 
-pbs_map bs_descriptor [2] = { 
-	{"fir_vivado_2", 1508564, 0, 2}, 
-	{"mac_vivado_2", 1508564, 1520852, 2}, 
-};
-
-
 #define PRC_WRITE(base, offset, value) iowrite32(value, base.prc_base + offset)
 #define PRC_READ(base, offset) ioread32(base.prc_base + offset)
+
+
+//static struct pbs_struct pbs_entries;
 
 struct esp_prc_device {
 	struct device 	*dev;
@@ -32,7 +26,10 @@ struct esp_prc_device {
 	void __iomem	*decoupler_base;
 } prc_dev;
 
-static struct pbs_map *pb_map;
+static struct pbs_arg *pb_map;
+
+static LIST_HEAD(pbs_list);
+
 
 static struct of_device_id esp_prc_device_ids[] = {
 	{
@@ -47,55 +44,6 @@ static struct of_device_id esp_prc_device_ids[] = {
 	{ },
 };
 
-
-//static inline int get_decoupler_addr(struct esp_device *dev, struct esp_device *decoupler)
-//{
-//	unsigned i;
-//	unsigned tile_id = 0xFF;
-//	unsigned dev_addr;
-//	unsigned dev_addr_trunc;
-//	unsigned dev_start_addr = 0x10000;
-//
-//	const unsigned addr_incr = 0x100;
-//	const unsigned monitor_base = 0x90180;
-//
-//	dev_addr = (unsigned) dev->addr;
-//	dev_addr_trunc = (dev_addr << 12) >> 12;
-//	//printf("device address 0x%08x truncated addr 0x%08x \n", dev_addr, dev_addr_trunc);
-//	//#ifdef ACCS_PRESENT
-//	//Obtain tile id
-//	for (i = 0; i < SOC_NACC; i++) {
-//		if(dev_start_addr == dev_addr_trunc) {
-//			tile_id = acc_locs[i].row * SOC_COLS + acc_locs[i].col;
-//			break;
-//		}
-//		else
-//			dev_start_addr += addr_incr;
-//	}
-//
-//	if(tile_id == 0XFF) {
-//		fprintf(stderr, "Error: cannot find tile id\n");
-//		exit(EXIT_FAILURE);
-//	}
-//
-//	//compute apb address for tile decoupler
-//	(*decoupler).addr = APB_BASE_ADDR + (monitor_base + tile_id * 0x200);
-//	//printf("tile_id is 0x%08x decoupler addr is 0x%08x \n", tile_id, (unsigned) esp_tile_decoupler.addr);
-//	return 0;
-//}
-//
-//int decouple_acc(struct esp_device *dev, unsigned val)
-//{
-//	struct esp_device esp_tile_decoupler;
-//	get_decoupler_addr(dev, &esp_tile_decoupler);
-//	if (val == 0)
-//		PRC_WRITE(esp_tile_decoupler, 0, 0);
-//	else
-//		PRC_WRITE(esp_tile_decoupler, 0, 1);
-//
-//	return 0;
-//}
-
 static int prc_start(void)
 {
 	uint32_t prc_status;
@@ -103,14 +51,14 @@ static int prc_start(void)
 
 	bit1 = cpu_to_le32(bit1);
 
-	pr_info("PRC (start): restarting PRC\n");
+	//pr_info("PRC (start): restarting PRC\n");
 	PRC_WRITE(prc_dev, 0x0, bit1);
 
 	prc_status = PRC_READ(prc_dev, 0x0);
 	prc_status = le32_to_cpu(prc_status);
-	pr_info("PRC (start): read status:0x%08x \n", prc_status);
+	//pr_info("PRC (start): read status:0x%08x \n", prc_status);
 	prc_status &= (1<<7);
-	pr_info("PRC (start): status check:0x%08x \n", prc_status);
+	//pr_info("PRC (start): status check:0x%08x \n", prc_status);
 	if (prc_status) {
 		pr_info("PRC (start): error starting controller \n");
 		return 1;
@@ -129,13 +77,13 @@ static int prc_stop(void)
 
 	prc_status = PRC_READ(prc_dev, 0x0);
 	prc_status = le32_to_cpu(prc_status);
-	pr_info("PRC (stop): read status:0x%08x \n", prc_status);
+	//pr_info("PRC (stop): read status:0x%08x \n", prc_status);
 	prc_status &= (1<<7);
 	if (!prc_status) {
 		pr_info("PRC (stop): error shutting controller \n");
 		return 1;
 	}
-	pr_info("PRC (stop): success shutting controller \n");
+	//pr_info("PRC (stop): success shutting controller \n");
 
 	return 0;
 }
@@ -146,15 +94,15 @@ static int prc_set_trigger(void *pbs_addr, uint32_t pbs_size)
 	uint32_t le_size = cpu_to_le32(pbs_size);
 	if (!prc_stop()) {
 		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x0, 0x0);
-		pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x0, 0x0);
+		//pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x0, 0x0);
 
 		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x4, le_addr);
-		pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x4, le_addr);
+		//pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x4, le_addr);
 
 		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x8, le_size);
-		pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x8, le_size);
+		//pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x8, le_size);
 
-		pr_info("PRC: Trigger armed \n");
+		//pr_info("PRC: Trigger armed \n");
 		return 0;
 	} else {
 		pr_info("PRC: Error arming trigger \n");
@@ -163,12 +111,11 @@ static int prc_set_trigger(void *pbs_addr, uint32_t pbs_size)
 }
 
 
-static int prc_reconfigure(pbs_map *pbs, void *pbs_file)
+static int prc_reconfigure(pbs_struct *pbs)
 {
 	//   int status = 0;
 
-	//init_prc();
-	prc_set_trigger(pbs_file, pbs->pbs_size);//pbs_id);
+	prc_set_trigger(pbs->phys_loc, pbs->size);//pbs_id);
 
 	if(!(prc_start())) {
 		//decouple_acc(dev, 1); //decouple tile
@@ -179,7 +126,6 @@ static int prc_reconfigure(pbs_map *pbs, void *pbs_file)
 	else {
 		pr_info("PRC: Error reconfiguring FPGA \n");
 		return 1;
-		//exit(EXIT_FAILURE);
 	}
 
 //	status = PRC_READ(prc_dev, 0x0);
@@ -228,12 +174,54 @@ int decoupler(int tile_id, int status)
 
 static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
-	pbs_map pbs;
-	void *pbs_file;
 	int i = 0;
+
+	pbs_arg user_pbs;
 	decouple_arg d;
+	pbs_struct *pbs_entry;
+	struct esp_device *esp;
 
 	switch (cmd) {
+		case PRC_LOAD_BS:
+			if (copy_from_user(&user_pbs, (pbs_arg *) arg, sizeof(pbs_arg))) {
+				pr_info("Failed to copy pbs_arg\n");
+				return -EACCES;
+			}
+
+			pr_info("pbs_size is 0x%08x\n", user_pbs.pbs_size);
+			if (!user_pbs.pbs_size)
+				return -EACCES;
+
+			list_for_each_entry(pbs_entry, &pbs_list, list){
+				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)) {
+					pr_info("\nAlready Loaded: %s - %s...\n", pbs_entry->name, user_pbs.name);
+					return -EACCES;
+				}
+			}
+
+			pbs_entry = kmalloc(sizeof(pbs_struct), GFP_KERNEL);
+			pbs_entry->file = kmalloc(user_pbs.pbs_size, GFP_DMA | GFP_KERNEL);
+			if (!pbs_entry->file)
+				return -ENOMEM;
+
+			if (copy_from_user(pbs_entry->file, user_pbs.pbs_mmap, user_pbs.pbs_size)) {
+				kfree(pbs_entry->file);
+				return -EACCES;
+			}
+
+			//Fill in rest of the pbs_struct fields
+			pbs_entry->size		= user_pbs.pbs_size;
+			pbs_entry->tile_id	= user_pbs.pbs_tile_id;
+			pbs_entry->phys_loc	= (void *)(virt_to_phys(pbs_entry->file));
+			memcpy(pbs_entry->name, user_pbs.name, LEN_DEVNAME_MAX);
+			INIT_LIST_HEAD(&pbs_entry->list);
+
+			//Add to list:
+			list_add(&pbs_entry->list, &pbs_list);
+
+			pr_info("Read Arguments...\n");
+			break;
+
 		case DECOUPLE:
 			if ( copy_from_user(&d, (decouple_arg *) arg, sizeof(decouple_arg)))
 				return -EACCES;
@@ -242,30 +230,36 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			break;
 
 		case PRC_RECONFIGURE:
-			if (copy_from_user(&pbs, (pbs_map *) arg, sizeof(pbs_map))) {
-				pr_info("Failed to copy pbs_map\n");
+			if (copy_from_user(&user_pbs, (pbs_arg *) arg, sizeof(pbs_arg))) {
+				pr_info("Failed to copy pbs_arg\n");
 				return -EACCES;
 			}
-
-			pr_info("pbs_size is 0x%08x\n", pbs.pbs_size);
-			if (!pbs.pbs_size)
-				return -EACCES;
-
-			pbs_file = kmalloc(pbs.pbs_size, GFP_DMA | GFP_KERNEL);
-			if (!pbs_file)
-				return -ENOMEM;
-
-			if (copy_from_user(pbs_file, pbs.pbs_mmap, pbs.pbs_size)) {
-				kfree(pbs_file);
-				return -EACCES;
+			list_for_each_entry(pbs_entry, &pbs_list, list){
+				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)){
+					pr_info("\nFound match!\n");
+					prc_reconfigure(pbs_entry);
+					return 0;
+				}
 			}
 
+			if (user_pbs.pbs_tile_id == 1)
+				esp_driver_register(prc_fir_driver);
+			if (user_pbs.pbs_tile_id == 2)
+			{
+				//esp = platform_get_drvdata(pd);
+				//esp_device_unregister(esp);
+				esp_driver_unregister(prc_fir_driver);
+			}	
+			if (user_pbs.pbs_tile_id == 3)
+				esp_driver_register(prc_mac_driver);
+			if (user_pbs.pbs_tile_id == 4)
+			{
+				esp = platform_get_drvdata(pd);
+				esp_device_unregister(esp);
+				esp_driver_unregister(prc_mac_driver);
+			}
 
-			pbs_file = (void *)(virt_to_phys(pbs_file));
-
-			pr_info("Read Arguments...\n");
-
-			prc_reconfigure(&pbs, pbs_file);
+			pr_info("\nBitstream not loaded..\n");
 			break;
 		default:
 			return -EINVAL;
@@ -340,7 +334,6 @@ static struct platform_driver esp_prc_driver = {
 static int __init esp_prc_init(void)
 {
 	pr_info(DRV_NAME ": init\n");
-	pb_map = (struct pbs_map *) &bs_descriptor;
 	return platform_driver_probe(&esp_prc_driver, esp_prc_probe);
 }
 
