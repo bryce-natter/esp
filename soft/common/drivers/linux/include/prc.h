@@ -35,14 +35,18 @@
 #define TRIGGER_OFFSET		0x60
 #define MONITOR_BASE_ADDR 	0x90180
 #define APB_BASE_ADDR		0x80000000
+#define PRC_IRQ			0x8
 
 
 #define LEN_DEVNAME_MAX 32
+#define LEN_DRVNAME_MAX 32
 
 #ifdef __KERNEL__
 typedef struct pbs_struct {
 	struct list_head	list;
-	char			name [LEN_DEVNAME_MAX];
+	char			name[LEN_DEVNAME_MAX];
+	char			driver[LEN_DRVNAME_MAX];
+	struct esp_driver	*esp_drv;
 	void			*file;
 	void			*phys_loc;
 	uint32_t		size;
@@ -56,6 +60,7 @@ typedef struct pbs_struct {
 
 typedef struct pbs_arg {
 	char		name [LEN_DEVNAME_MAX];    
+	char		driver[LEN_DRVNAME_MAX];
 	uint32_t	pbs_size;
 	uint32_t	pbs_tile_id;
 	void		*pbs_mmap; //userspace
@@ -65,6 +70,7 @@ typedef struct decouple_arg {
 	int	tile_id;
 	char	status;
 }decouple_arg;
+
 
 #define PRC_RECONFIGURE	_IOW(PRC_MAGIC, 0, struct pbs_arg *)
 #define DECOUPLE	_IOW(PRC_MAGIC, 1, struct pbs_arg *)

@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <libgen.h>
 
 
 
@@ -45,7 +46,7 @@ int main(int argc, char **argv)
 {
 	static const char filename[] = "/dev/prc";
 	pbs_arg pbs;
-	decouple_arg da;
+	decouple_arg da = {};
 
 	int tile_id = 0;
 	int pbs_fd = {0};
@@ -75,7 +76,7 @@ int main(int argc, char **argv)
 
 	if(!strcmp(argv[1], "decouple")) {
 		da.tile_id = tile_id;
-		da.status = 0xFFFF;
+		da.status = 1;
 		decouple(&da);
 		return 0;
 	}
@@ -88,6 +89,8 @@ int main(int argc, char **argv)
 	}
 
 	strcpy(pbs.name, argv[3]);
+	strcpy(pbs.driver, argv[4]);
+
 	pbs.pbs_tile_id = atoi(argv[2]);
 
 	if(!strcmp(argv[1], "load")) {

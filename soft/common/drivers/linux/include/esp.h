@@ -55,9 +55,14 @@ extern struct esp_driver *prc_fir_driver;
 extern struct esp_driver *prc_mac_driver;
 extern struct platform_device *pd;
 
+extern bool prc_loaded;
+extern spinlock_t esp_drivers_lock;
+extern struct list_head esp_drivers;
+
 struct esp_device;
 
 struct esp_driver {
+	struct list_head list;
 	struct class *class;
 	dev_t devno;
 	/* the below are filled in by drivers */
@@ -67,6 +72,7 @@ struct esp_driver {
 	unsigned int ioctl_cm;
 	size_t arg_size;
 	struct platform_device *pdev;
+	bool dpr;
 };
 
 struct esp_device {

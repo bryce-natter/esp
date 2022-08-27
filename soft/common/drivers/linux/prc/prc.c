@@ -5,10 +5,15 @@
 
 #include <asm/byteorder.h>
 #include <linux/io.h>
+#include <asm/irq.h> 
+#include <linux/of_irq.h>
 #include <linux/list.h>
 #include <linux/string.h>
 #include "prc.h"
 #include <esp.h>
+#include <linux/delay.h>
+#include <linux/workqueue.h>
+#include <linux/ktime.h>
 
 #define DRV_NAME "prc"
 
@@ -17,6 +22,11 @@
 
 
 //static struct pbs_struct pbs_entries;
+//
+
+uint32_t rtile = 0;
+struct pbs_struct *curr;
+struct pbs_struct *next; 
 
 struct esp_prc_device {
 	struct device 	*dev;
@@ -24,12 +34,12 @@ struct esp_prc_device {
 	struct module 	*module;
 	void __iomem 	*prc_base;
 	void __iomem	*decoupler_base;
+	int		irq;
 } prc_dev;
-
-static struct pbs_arg *pb_map;
 
 static LIST_HEAD(pbs_list);
 
+ktime_t start_time, stop_time, elapsed_time;
 
 static struct of_device_id esp_prc_device_ids[] = {
 	{
@@ -50,15 +60,12 @@ static int prc_start(void)
 	uint32_t bit1 = 1;
 
 	bit1 = cpu_to_le32(bit1);
-
-	//pr_info("PRC (start): restarting PRC\n");
 	PRC_WRITE(prc_dev, 0x0, bit1);
 
 	prc_status = PRC_READ(prc_dev, 0x0);
 	prc_status = le32_to_cpu(prc_status);
-	//pr_info("PRC (start): read status:0x%08x \n", prc_status);
 	prc_status &= (1<<7);
-	//pr_info("PRC (start): status check:0x%08x \n", prc_status);
+
 	if (prc_status) {
 		pr_info("PRC (start): error starting controller \n");
 		return 1;
@@ -72,19 +79,16 @@ static int prc_stop(void)
 {
 	uint32_t prc_status;
 
-	//pr_info("PRC: Shutting down PRC\n");
 	PRC_WRITE(prc_dev, 0x0, 0x0);
 
 	prc_status = PRC_READ(prc_dev, 0x0);
 	prc_status = le32_to_cpu(prc_status);
-	//pr_info("PRC (stop): read status:0x%08x \n", prc_status);
 	prc_status &= (1<<7);
+
 	if (!prc_status) {
 		pr_info("PRC (stop): error shutting controller \n");
 		return 1;
 	}
-	//pr_info("PRC (stop): success shutting controller \n");
-
 	return 0;
 }
 
@@ -94,51 +98,13 @@ static int prc_set_trigger(void *pbs_addr, uint32_t pbs_size)
 	uint32_t le_size = cpu_to_le32(pbs_size);
 	if (!prc_stop()) {
 		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x0, 0x0);
-		//pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x0, 0x0);
-
 		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x4, le_addr);
-		//pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x4, le_addr);
-
 		PRC_WRITE(prc_dev, TRIGGER_OFFSET + 0x8, le_size);
-		//pr_info("PRC Trigger [0x%08x] Wrote: [0x%08x]\n", prc_dev.prc_base + TRIGGER_OFFSET + 0x8, le_size);
-
-		//pr_info("PRC: Trigger armed \n");
 		return 0;
 	} else {
 		pr_info("PRC: Error arming trigger \n");
 		return 1;
 	}
-}
-
-
-static int prc_reconfigure(pbs_struct *pbs)
-{
-	//   int status = 0;
-
-	prc_set_trigger(pbs->phys_loc, pbs->size);//pbs_id);
-
-	if(!(prc_start())) {
-		//decouple_acc(dev, 1); //decouple tile
-		pr_info("PRC: Starting Reconfiguration \n");
-		PRC_WRITE(prc_dev, 0x4, 0); //send reconfig trigger
-	}
-
-	else {
-		pr_info("PRC: Error reconfiguring FPGA \n");
-		return 1;
-	}
-
-//	status = PRC_READ(prc_dev, 0x0);
-//	status = le32_to_cpu(status);
-//
-//	while(!status){
-//		status = PRC_READ(prc_dev, 0x0);
-//		status = le32_to_cpu(status);
-//		printk(DRV_NAME ": Read status: 0x%0x\n", status);
-//		status &= 6;//(1 << 2);
-//	}
-
-	pr_info("PRC: Reconfigured FPGA \n");
 }
 
 int decoupler(int tile_id, int status)
@@ -155,20 +121,36 @@ int decoupler(int tile_id, int status)
 	status = __cpu_to_le32(status);
 	iowrite32(status, decoupler);
 	ret = ioread32(decoupler);
+	ret = __cpu_to_be32(ret);
 
 	printk(DRV_NAME ": Reading decoupler @(0x%08x -> 0x%08x): 0x%0x\n", decoupler_phys, decoupler, ret);
 
 	ret = ioread32(decoupler);
 	iounmap(decoupler);
 	return ret;
+}
 
-	/*
-	while(!status){
-	status = PRC_READ(prc_dev, 0x0);
-	status &= (1 << 2);
+static int prc_reconfigure(pbs_struct *pbs)
+{
+	//   int status = 0;
+	start_time = ktime_get();
+	pr_info(DRV_NAME "Starting time: %lldns\n",  ktime_to_ns(start_time));
+	
+	decoupler(pbs->tile_id, 1); //Signal to decouple Acc
+
+	prc_set_trigger(pbs->phys_loc, pbs->size);//pbs_id);
+
+	if(!(prc_start())) {
+		pr_info(DRV_NAME ": Starting Reconfiguration \n");
+		PRC_WRITE(prc_dev, 0x4, 0); //send reconfig trigger
 	}
-	*/
-	//pr_info("PRC: Reconfigured FPGA \n");
+
+	else {
+		pr_info(DRV_NAME ": Error reconfiguring FPGA \n");
+		return 1;
+	}
+
+	pr_info(DRV_NAME ": Requested Reconfiguration\n");
 }
 
 
@@ -180,7 +162,14 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	decouple_arg d;
 	pbs_struct *pbs_entry;
 	struct esp_device *esp;
+	struct esp_driver *drv;
+	struct list_head *ele;
 
+	/**
+	 * TODO:
+	 *	- Add remove pbs entry
+	 *	- Add return pbs_entry list
+	 */
 	switch (cmd) {
 		case PRC_LOAD_BS:
 			if (copy_from_user(&user_pbs, (pbs_arg *) arg, sizeof(pbs_arg))) {
@@ -191,6 +180,7 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			pr_info("pbs_size is 0x%08x\n", user_pbs.pbs_size);
 			if (!user_pbs.pbs_size)
 				return -EACCES;
+
 
 			list_for_each_entry(pbs_entry, &pbs_list, list){
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)) {
@@ -204,6 +194,22 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			if (!pbs_entry->file)
 				return -ENOMEM;
 
+			pr_info("Looking for %s...\n", user_pbs.driver);
+			spin_lock(&esp_drivers_lock);
+			list_for_each(ele, &esp_drivers) {
+				drv = list_entry(ele, struct esp_driver, list);
+				//pr_info("Comparing [%s] with [%s]\n", drv->plat.driver.name, user_pbs.driver);
+				if (!strcmp(drv->plat.driver.name, user_pbs.driver)) {
+					pr_info("Found %s driver in driver list\n", user_pbs.driver);
+					pbs_entry->esp_drv = drv;
+				}
+			}
+
+			if (!pbs_entry->esp_drv)
+				return -ENODEV;
+
+			spin_unlock(&esp_drivers_lock);
+
 			if (copy_from_user(pbs_entry->file, user_pbs.pbs_mmap, user_pbs.pbs_size)) {
 				kfree(pbs_entry->file);
 				return -EACCES;
@@ -214,7 +220,13 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			pbs_entry->tile_id	= user_pbs.pbs_tile_id;
 			pbs_entry->phys_loc	= (void *)(virt_to_phys(pbs_entry->file));
 			memcpy(pbs_entry->name, user_pbs.name, LEN_DEVNAME_MAX);
+			memcpy(pbs_entry->driver, user_pbs.driver, LEN_DRVNAME_MAX);
 			INIT_LIST_HEAD(&pbs_entry->list);
+
+			if (list_empty(&pbs_list)) {
+				esp_driver_register(pbs_entry->esp_drv);
+				curr = pbs_entry; 
+			}
 
 			//Add to list:
 			list_add(&pbs_entry->list, &pbs_list);
@@ -237,13 +249,21 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			list_for_each_entry(pbs_entry, &pbs_list, list){
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)){
 					pr_info("\nFound match!\n");
+					next = pbs_entry;
+					pr_info(DRV_NAME ": unregistering %s\n", curr->driver);
+					esp_driver_unregister(curr->esp_drv);
+
 					prc_reconfigure(pbs_entry);
+					//pr_info("Please register %s\n", pbs_entry->esp_drv->plat.driver.name);
 					return 0;
 				}
 			}
 
 			if (user_pbs.pbs_tile_id == 1)
+			{
+				//set driver prc field to high...
 				esp_driver_register(prc_fir_driver);
+			}
 			if (user_pbs.pbs_tile_id == 2)
 			{
 				//esp = platform_get_drvdata(pd);
@@ -278,11 +298,52 @@ static struct miscdevice esp_prc_misc_device = {
 	.fops	= &esp_prc_fops,
 };
 
+void prc_register_drv(struct work_struct * work)
+{
+	curr = next;
+	pr_info(DRV_NAME ": Current now equals -  %s\n", curr->driver);
+	esp_driver_register(next->esp_drv);
+}
+//DECLARE_TASKLET(prc_register_tasklet, prc_register_drv, 0);
+
+//static struct work_struct prc_wq;
+DECLARE_WORK(prc_wq, prc_register_drv);
+
+static irqreturn_t prc_irq(int irq, void *dev)
+{
+	int status;
+	uint32_t byte3= 0x3;
+	byte3 = cpu_to_le32(byte3);
+
+	status = PRC_READ(prc_dev, 0x0);
+	pr_info(DRV_NAME ": IRQ Triggered - Reconfiguration Complete: 0x%08x\n", status);
+
+	PRC_WRITE(prc_dev, 0x0, byte3); //clear interrupt 
+	decoupler(2, 0); //recouple tile2
+
+	stop_time = ktime_get();
+	elapsed_time= ktime_sub(stop_time, start_time);
+	pr_info(DRV_NAME "Elapsed time: : %lldns\n",  ktime_to_ns(elapsed_time));
+        if(status == 0x07000000){
+		pr_info(DRV_NAME ": Registering new driver...\n");
+		schedule_work(&prc_wq);
+		//tasklet_schedule(&prc_register_tasklet);
+		//esp_driver_register(next->esp_drv);
+		//schedule this somewhere...
+		//curr = next; 
+	}
+
+	return IRQ_HANDLED;
+}
+
 static int esp_prc_probe(struct platform_device *pdev)
 {
 	int ret;
+	int rc;
+	int irq_num;
 
-	//Device tree to request IO
+
+	prc_loaded = true; 
 	ret = misc_register(&esp_prc_misc_device);
 	ret = of_address_to_resource(pdev->dev.of_node, 0, &prc_dev.res);
 	if (ret) {
@@ -301,6 +362,12 @@ static int esp_prc_probe(struct platform_device *pdev)
 	if (prc_dev.prc_base == NULL) {
 		ret = -ENOMEM;
 		goto release_mem;
+	}
+
+	rc = request_irq(PRC_IRQ, prc_irq, IRQF_SHARED, DRV_NAME, pdev);
+	if (rc) {
+		pr_info(DRV_NAME " cannot request IRQ \n");
+		goto release_mem; 
 	}
 
 	return 0;

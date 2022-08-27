@@ -551,7 +551,7 @@ def print_constants(fp, soc, esp_config):
   
   #
   fp.write("  ------ PRC interrupt line\n")
-  fp.write("  constant CFG_PRC_IRQ : integer := 5;\n")
+  fp.write("  constant CFG_PRC_IRQ : integer := 7;\n")
 
 
 def print_mapping(fp, soc, esp_config):

@@ -37,6 +37,13 @@
 static DEFINE_SPINLOCK(esp_devices_lock);
 static LIST_HEAD(esp_devices);
 
+DEFINE_SPINLOCK(esp_drivers_lock);
+LIST_HEAD(esp_drivers);
+
+EXPORT_SYMBOL_GPL(esp_drivers_lock);
+EXPORT_SYMBOL_GPL(esp_drivers);
+
+
 /* These are overwritten whith insmod flags */
 static unsigned long cache_line_bytes = 16;
 module_param_named(line_bytes, cache_line_bytes, ulong, S_IRUGO);
@@ -651,10 +658,23 @@ static void esp_sysfs_device_remove(struct esp_driver *drv)
 	unregister_chrdev_region(devno, ESP_MAX_DEVICES);
 }
 
+bool prc_loaded = false;
+EXPORT_SYMBOL_GPL(prc_loaded);
+
 int esp_driver_register(struct esp_driver *driver)
 {
 	struct platform_driver *plat = &driver->plat;
 	int rc;
+
+	if(prc_loaded && !driver->dpr) {
+		spin_lock(&esp_drivers_lock);
+		list_add(&driver->list, &esp_drivers);
+		spin_unlock(&esp_drivers_lock);
+		pr_info("Added %s to driver list...\n", driver->plat.driver.name);
+
+		driver->dpr = true;
+		return 0;
+	}
 
 	rc = esp_sysfs_device_create(driver);
 	if (rc)
@@ -666,6 +686,7 @@ int esp_driver_register(struct esp_driver *driver)
 err:
 	esp_sysfs_device_remove(driver);
 	return rc;
+
 }
 EXPORT_SYMBOL_GPL(esp_driver_register);
 
