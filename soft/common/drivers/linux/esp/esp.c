@@ -535,19 +535,15 @@ static void esp_destroy_cdev(struct esp_device *esp, int ndev)
 	cdev_del(&esp->cdev);
 }
 
-struct platform_device *pd = 0;
-EXPORT_SYMBOL_GPL(pd);
 int esp_device_register(struct esp_device *esp, struct platform_device *pdev)
 {
 	struct resource *res;
 	int rc;
-	
-	pd = pdev;
-	pr_info("esp: %ld\n", esp);
-	pr_info("pd: %ld\n", pd);
 
-	esp->pdev = &pdev->dev;
+	
+	esp->driver->esp = esp;
 	esp->driver->pdev = pdev;
+	esp->pdev = &pdev->dev;
 	mutex_init(&esp->lock);
 	init_completion(&esp->completion);
 
@@ -676,6 +672,7 @@ int esp_driver_register(struct esp_driver *driver)
 		return 0;
 	}
 
+	pr_info(PFX ": Registering driver: %s\n", driver->plat.driver.name); 
 	rc = esp_sysfs_device_create(driver);
 	if (rc)
 		return rc;
@@ -696,12 +693,6 @@ void esp_driver_unregister(struct esp_driver *driver)
 	esp_sysfs_device_remove(driver);
 }
 EXPORT_SYMBOL_GPL(esp_driver_unregister);
-
-struct esp_driver *prc_fir_driver = 0;
-struct esp_driver *prc_mac_driver = 0;
-EXPORT_SYMBOL_GPL(prc_mac_driver);
-EXPORT_SYMBOL_GPL(prc_fir_driver);
-
 
 static int __init esp_init(void)
 {

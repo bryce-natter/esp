@@ -2484,6 +2484,7 @@ def print_load_script(fp, soc, esp_config):
   fp.write(" llc_ways=" + str(soc.llc_ways.get()))
   fp.write(" llc_banks=" + str(nmem))
   fp.write(" rtl_cache=" + str(soc.cache_rtl.get()))
+  fp.write("\ninsmod dpr_tile_manager.ko");
   fp.write("\ninsmod prc.ko");
 
 def create_socmap(esp_config, soc):

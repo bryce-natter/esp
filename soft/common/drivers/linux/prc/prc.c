@@ -9,8 +9,8 @@
 #include <linux/of_irq.h>
 #include <linux/list.h>
 #include <linux/string.h>
-#include "prc.h"
 #include <esp.h>
+#include "prc.h"
 #include <linux/delay.h>
 #include <linux/workqueue.h>
 #include <linux/ktime.h>
@@ -33,11 +33,13 @@ struct esp_prc_device {
 	struct resource res;
 	struct module 	*module;
 	void __iomem 	*prc_base;
-	void __iomem	*decoupler_base;
+	//void __iomem	*decoupler_base;
 	int		irq;
 } prc_dev;
 
-static LIST_HEAD(pbs_list);
+
+struct list_head pbs_list[5];
+
 
 ktime_t start_time, stop_time, elapsed_time;
 
@@ -53,6 +55,25 @@ static struct of_device_id esp_prc_device_ids[] = {
 	},
 	{ },
 };
+
+struct dpr_tile tiles[5] = {};
+
+void tiles_setup(void)
+{
+	int i;
+	unsigned long dphys; 
+
+	for(i = 0; i < 5; i++)
+	{
+		INIT_LIST_HEAD(&pbs_list[i]);
+		tiles[i].tile_num = i;
+		dphys= (unsigned long) (APB_BASE_ADDR + (MONITOR_BASE_ADDR + i * 0x200));
+		tiles[i].decoupler = ioremap(dphys, 1); 
+	}
+
+	strcpy(tiles[2].tile_id, "eb_122");
+	strcpy(tiles[4].tile_id, "eb_056");
+}
 
 static int prc_start(void)
 {
@@ -107,36 +128,47 @@ static int prc_set_trigger(void *pbs_addr, uint32_t pbs_size)
 	}
 }
 
-int decoupler(int tile_id, int status)
+
+int __decoupler(int tile, int status)
 {
 	unsigned long decoupler_phys;
 	void *decoupler;
 	int ret;
 
-	decoupler_phys = (unsigned long) (APB_BASE_ADDR + (MONITOR_BASE_ADDR + tile_id * 0x200));
+	//decoupler_phys = (unsigned long) (APB_BASE_ADDR + (MONITOR_BASE_ADDR + tile_id * 0x200));
 
 	//REQUEST DECOUPLER IO REGION
-	decoupler = ioremap(decoupler_phys, 1);
+	//decoupler = ioremap(decoupler_phys, 1);
 
 	status = __cpu_to_le32(status);
-	iowrite32(status, decoupler);
-	ret = ioread32(decoupler);
-	ret = __cpu_to_be32(ret);
+	iowrite32(status, tiles[tile].decoupler);
+	ret = ioread32(tiles[tile].decoupler);
 
-	printk(DRV_NAME ": Reading decoupler @(0x%08x -> 0x%08x): 0x%0x\n", decoupler_phys, decoupler, ret);
+	//printk(DRV_NAME ": Reading decoupler (0x%08x -> 0x%08x, 0x%08x)\n", ret, be_ret, le_ret);
 
-	ret = ioread32(decoupler);
-	iounmap(decoupler);
+	ret = ioread32(tiles[tile].decoupler);
+	//iounmap(decoupler);
 	return ret;
+}
+
+
+
+int decouple(int tile_loc)
+{
+	return __decoupler(tile_loc, 1);
+}
+
+int couple(int tile_loc)
+{
+	return __decoupler(tile_loc, 0);
 }
 
 static int prc_reconfigure(pbs_struct *pbs)
 {
 	//   int status = 0;
 	start_time = ktime_get();
-	pr_info(DRV_NAME "Starting time: %lldns\n",  ktime_to_ns(start_time));
 	
-	decoupler(pbs->tile_id, 1); //Signal to decouple Acc
+	decouple(pbs->tile_id); //Signal to decouple Acc
 
 	prc_set_trigger(pbs->phys_loc, pbs->size);//pbs_id);
 
@@ -164,6 +196,7 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	struct esp_device *esp;
 	struct esp_driver *drv;
 	struct list_head *ele;
+	char *new_drv_name = "xxx_xxx"; 
 
 	/**
 	 * TODO:
@@ -182,10 +215,11 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 				return -EACCES;
 
 
-			list_for_each_entry(pbs_entry, &pbs_list, list){
+			list_for_each_entry(pbs_entry, &pbs_list[user_pbs.pbs_tile_id], list){
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)) {
 					pr_info("\nAlready Loaded: %s - %s...\n", pbs_entry->name, user_pbs.name);
-					return -EACCES;
+					load_driver(pbs_entry->esp_drv, pbs_entry->tile_id);
+					//return -EACCES;
 				}
 			}
 
@@ -198,7 +232,7 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			spin_lock(&esp_drivers_lock);
 			list_for_each(ele, &esp_drivers) {
 				drv = list_entry(ele, struct esp_driver, list);
-				//pr_info("Comparing [%s] with [%s]\n", drv->plat.driver.name, user_pbs.driver);
+				pr_info("Comparing [%s] with [%s]\n", drv->plat.driver.name, user_pbs.driver);
 				if (!strcmp(drv->plat.driver.name, user_pbs.driver)) {
 					pr_info("Found %s driver in driver list\n", user_pbs.driver);
 					pbs_entry->esp_drv = drv;
@@ -223,22 +257,18 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			memcpy(pbs_entry->driver, user_pbs.driver, LEN_DRVNAME_MAX);
 			INIT_LIST_HEAD(&pbs_entry->list);
 
-			if (list_empty(&pbs_list)) {
-				esp_driver_register(pbs_entry->esp_drv);
-				curr = pbs_entry; 
+			if (list_empty(&pbs_list[pbs_entry->tile_id])) {
+				//strcpy(pbs_entry->esp_drv->plat.driver.of_match_table[1].name, tiles[pbs_entry->tile_id].tile_id);
+				//strcat(pbs_entry->esp_drv->plat.driver.name, tiles[pbs_entry->tile_id].tile_id);
+				//esp_driver_register(pbs_entry->esp_drv);
+				load_driver(pbs_entry->esp_drv, pbs_entry->tile_id);
+				tiles[pbs_entry->tile_id].curr = pbs_entry; 
 			}
 
 			//Add to list:
-			list_add(&pbs_entry->list, &pbs_list);
+			list_add(&pbs_entry->list, &pbs_list[user_pbs.pbs_tile_id]);
 
-			pr_info("Read Arguments...\n");
-			break;
-
-		case DECOUPLE:
-			if ( copy_from_user(&d, (decouple_arg *) arg, sizeof(decouple_arg)))
-				return -EACCES;
-			return decoupler(d.tile_id, d.status);
-
+			pr_info(DRV_NAME ": Successfully Read Arguments...\n");
 			break;
 
 		case PRC_RECONFIGURE:
@@ -246,37 +276,20 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 				pr_info("Failed to copy pbs_arg\n");
 				return -EACCES;
 			}
-			list_for_each_entry(pbs_entry, &pbs_list, list){
+			list_for_each_entry(pbs_entry, &pbs_list[user_pbs.pbs_tile_id], list){
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)){
 					pr_info("\nFound match!\n");
-					next = pbs_entry;
-					pr_info(DRV_NAME ": unregistering %s\n", curr->driver);
-					esp_driver_unregister(curr->esp_drv);
+					tiles[user_pbs.pbs_tile_id].next = pbs_entry;
+					rtile = user_pbs.pbs_tile_id;
+					pr_info(DRV_NAME ": unregistering %s\n", tiles[user_pbs.pbs_tile_id].curr->driver);
+					unload_driver(user_pbs.pbs_tile_id);
+
+					//esp_driver_unregister(tiles[user_pbs.pbs_tile_id].curr->esp_drv);
 
 					prc_reconfigure(pbs_entry);
 					//pr_info("Please register %s\n", pbs_entry->esp_drv->plat.driver.name);
 					return 0;
 				}
-			}
-
-			if (user_pbs.pbs_tile_id == 1)
-			{
-				//set driver prc field to high...
-				esp_driver_register(prc_fir_driver);
-			}
-			if (user_pbs.pbs_tile_id == 2)
-			{
-				//esp = platform_get_drvdata(pd);
-				//esp_device_unregister(esp);
-				esp_driver_unregister(prc_fir_driver);
-			}	
-			if (user_pbs.pbs_tile_id == 3)
-				esp_driver_register(prc_mac_driver);
-			if (user_pbs.pbs_tile_id == 4)
-			{
-				esp = platform_get_drvdata(pd);
-				esp_device_unregister(esp);
-				esp_driver_unregister(prc_mac_driver);
 			}
 
 			pr_info("\nBitstream not loaded..\n");
@@ -300,9 +313,11 @@ static struct miscdevice esp_prc_misc_device = {
 
 void prc_register_drv(struct work_struct * work)
 {
-	curr = next;
-	pr_info(DRV_NAME ": Current now equals -  %s\n", curr->driver);
-	esp_driver_register(next->esp_drv);
+	tiles[rtile].curr = tiles[rtile].next;
+	pr_info(DRV_NAME ": Current now equals -  %s\n", tiles[rtile].curr->driver);
+	//esp_driver_register(tiles[rtile].next->esp_drv);
+	load_driver(tiles[rtile].next->esp_drv, rtile);
+	//pr_info(DRV_NAME ": Driver can also monitor IRQ: %d", tiles[rtile].next->esp_drv->esp->irq);
 }
 //DECLARE_TASKLET(prc_register_tasklet, prc_register_drv, 0);
 
@@ -316,12 +331,12 @@ static irqreturn_t prc_irq(int irq, void *dev)
 	byte3 = cpu_to_le32(byte3);
 
 	status = PRC_READ(prc_dev, 0x0);
-	pr_info(DRV_NAME ": IRQ Triggered - Reconfiguration Complete: 0x%08x\n", status);
+	//pr_info(DRV_NAME ": IRQ Triggered - Reconfiguration Complete: 0x%08x\n", status);
 
 	PRC_WRITE(prc_dev, 0x0, byte3); //clear interrupt 
-	decoupler(2, 0); //recouple tile2
-
 	stop_time = ktime_get();
+	couple(rtile); //recouple tile2
+
 	elapsed_time= ktime_sub(stop_time, start_time);
 	pr_info(DRV_NAME "Elapsed time: : %lldns\n",  ktime_to_ns(elapsed_time));
         if(status == 0x07000000){
@@ -401,6 +416,7 @@ static struct platform_driver esp_prc_driver = {
 static int __init esp_prc_init(void)
 {
 	pr_info(DRV_NAME ": init\n");
+	tiles_setup();
 	return platform_driver_probe(&esp_prc_driver, esp_prc_probe);
 }
 

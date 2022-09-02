@@ -51,6 +51,10 @@ $(SOFT_BUILD)/sysroot/opt/drivers-esp/prc.ko: $(SOFT_BUILD)/linux-build/vmlinux 
 	$(QUIET_MAKE)ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE_LINUX) DRIVERS=$(DRV_LINUX) KSRC=$(SOFT_BUILD)/linux-build DESIGN_PATH=$(DESIGN_PATH) $(MAKE) -C $(BUILD_DRIVERS)/prc
 	$(QUIET_CP)cp $(BUILD_DRIVERS)/prc/prc.ko $@
 
+$(SOFT_BUILD)/sysroot/opt/drivers-esp/dpr_tile_manager.ko: $(SOFT_BUILD)/sysroot/opt/drivers-esp/prc.ko
+	@mkdir -p $(SOFT_BUILD)/sysroot/opt/drivers-esp
+	$(QUIET_CP)cp $(BUILD_DRIVERS)/prc/dpr_tile_manager.ko $@
+
 # This is a PHONY to guarantee sysroot is always updated when apps or drivers change
 # Most targets won't actually do anything if their dependencies have not changed.
 # Linux is compiled twice if necessary to ensure drivers are compiled against the most recent kernel
@@ -60,6 +64,7 @@ sysroot-update: $(SOFT_BUILD)/linux-build/vmlinux $(ESP_CFG_BUILD)/socmap.vhd so
 	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/esp_cache.ko
 	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/esp_private_cache.ko
 	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/esp.ko
+	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/dpr_tile_manager.ko
 	@$(MAKE) $(SOFT_BUILD)/sysroot/opt/drivers-esp/prc.ko
 	@mkdir -p $(BUILD_DRIVERS)/prc/linux/app
 	@CPU_ARCH=$(CPU_ARCH) DRIVERS=$(DRV_LINUX) BUILD_PATH=$(BUILD_DRIVERS)/prc/linux/app DESIGN_PATH=$(DESIGN_PATH) $(MAKE) -C $(DRV_LINUX)/prc/app

@@ -72,6 +72,7 @@ struct esp_driver {
 	unsigned int ioctl_cm;
 	size_t arg_size;
 	struct platform_device *pdev;
+	struct esp_device *esp;
 	bool dpr;
 };
 

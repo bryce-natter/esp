@@ -52,6 +52,22 @@ typedef struct pbs_struct {
 	uint32_t		size;
 	uint32_t		tile_id;
 }pbs_struct;
+
+#define NUM_TILES 5
+struct dpr_tile {
+	uint32_t		tile_num;
+	char			tile_id[10];
+	struct of_device_id	device_ids[5];
+	struct esp_driver	esp_drv;
+	struct esp_device	esp_dev;
+
+	struct pbs_struct	*curr;
+	struct pbs_struct	*next;
+	void			*decoupler;
+};
+
+
+
 #endif
 
 //extern struct esp_driver *tile_drivers[128] = {0};
@@ -71,6 +87,8 @@ typedef struct decouple_arg {
 	char	status;
 }decouple_arg;
 
+void load_driver(struct esp_driver *esp, int tile_num);
+void unload_driver(int tile_num);
 
 #define PRC_RECONFIGURE	_IOW(PRC_MAGIC, 0, struct pbs_arg *)
 #define DECOUPLE	_IOW(PRC_MAGIC, 1, struct pbs_arg *)
