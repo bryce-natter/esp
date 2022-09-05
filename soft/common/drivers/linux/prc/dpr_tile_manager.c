@@ -28,7 +28,8 @@
 #define DRV_NAME "dpr_tile_manger"
 
 
-static struct dpr_tile tiles[5] = {}; 
+struct dpr_tile tiles[5] = {}; 
+EXPORT_SYMBOL_GPL(tiles);
 
 
 //static struct dpr_tile * to_dpr_tile(struct platform_device *pdev)
@@ -41,6 +42,60 @@ static struct dpr_tile tiles[5] = {};
 //
 //}
 //
+//
+
+
+//struct pbs_struct * get_pbs(int tile, char *name)
+//{
+//	pbs_struct *pbs_entry;
+//	list_for_each_entry(pbs_entry, &pbs_list[user_pbs.pbs_tile_id], list){
+//		if(pbs_entry->tile_id == tile && !strcmp(pbs_entry->name, name)){
+//			pr_info("\nFound match!\n");
+//			return pbs_entry;
+//		}
+//	}
+//
+//	return NULL;
+//
+//}
+//
+//int add_pbs(int tile, struct pbs_struct *pbs)
+//{
+//	int ret; 
+//	struct pbs_struct pbs_entry = get_pbs(pbs->tile_id, pbs->name);
+//
+//	if(pbs_entry)
+//		return -1;
+//
+//	list_add(&pbs->list, &tiles[tile].pbs_list);
+//	return 0;
+//
+//}
+
+int __decoupler(int tile, int status)
+{
+	unsigned long decoupler_phys;
+	void *decoupler;
+	int ret;
+
+	status = __cpu_to_le32(status);
+	iowrite32(status, tiles[tile].decoupler);
+	ret = ioread32(tiles[tile].decoupler);
+	return ret;
+}
+
+
+int decouple(int tile_loc)
+{
+	return __decoupler(tile_loc, 1);
+}
+EXPORT_SYMBOL_GPL(decouple);
+
+int couple(int tile_loc)
+{
+	return __decoupler(tile_loc, 0);
+}
+EXPORT_SYMBOL_GPL(couple);
 
 static int tile_probe(struct platform_device *pdev)
 {
@@ -110,6 +165,37 @@ void load_driver(struct esp_driver *esp, int tile_num)
 }
 EXPORT_SYMBOL_GPL(load_driver);
 
+
+void wait_for_tile(int tile)
+{
+	u32 status, run;
+
+	if(!tiles[tile].esp_dev.iomem)
+		pr_info("IOMEM NOT MAPPED...");
+	pr_info("IOMEM: 0x%08x\n", tiles[tile].esp_dev.iomem);
+
+
+	status = ioread32be(tiles[tile].esp_dev.iomem + STATUS_REG);
+	run = status & STATUS_MASK_RUN;
+	pr_info("STATUS: 0x%08x\n", status);
+
+	if (run) {
+		wait_for_completion_interruptible(&(tiles[tile].esp_dev.completion));
+	}
+
+
+
+}
+EXPORT_SYMBOL_GPL(wait_for_tile);
+
+void register_tile_driver(struct work_struct * work)
+{
+	struct dpr_tile *tile = container_of(work, struct dpr_tile, reg_drv_work);
+	tile->curr = tiles->next;
+	pr_info(DRV_NAME ": Current now equals -  %s\n", tiles->curr->driver);
+	load_driver(tile->next->esp_drv, tile->tile_num);
+}
+
 void tiles_setup(void)
 {
 	int i;
@@ -117,7 +203,8 @@ void tiles_setup(void)
 
 	for(i = 0; i < 5; i++)
 	{
-		//INIT_LIST_HEAD(&pbs_list[i]);
+		INIT_LIST_HEAD(&tiles[i].pbs_list);
+		INIT_WORK(&tiles[i].reg_drv_work, register_tile_driver); 
 		tiles[i].tile_num = i;
 		dphys= (unsigned long) (APB_BASE_ADDR + (MONITOR_BASE_ADDR + i * 0x200));
 		tiles[i].decoupler = ioremap(dphys, 1); 
@@ -127,6 +214,8 @@ void tiles_setup(void)
 
 		strcpy(tiles[i].device_ids[2].compatible , "sld");
 		tiles[i].esp_drv.plat.driver.of_match_table = tiles[i].device_ids;
+
+		init_completion(&tiles[i].prc_completion);
 	}
 
 	strcpy(tiles[2].tile_id, "eb_122");

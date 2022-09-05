@@ -61,11 +61,24 @@ struct dpr_tile {
 	struct esp_driver	esp_drv;
 	struct esp_device	esp_dev;
 
+	struct work_struct	reg_drv_work; 
+
+	struct list_head	pbs_list; 
 	struct pbs_struct	*curr;
 	struct pbs_struct	*next;
 	void			*decoupler;
+	struct completion	prc_completion;
+
+
 };
 
+extern struct dpr_tile tiles[5];
+
+void load_driver(struct esp_driver *esp, int tile_num);
+void unload_driver(int tile_num);
+int decouple(int tile_loc);
+int couple(int tile_loc);
+void wait_for_tile(int tile);
 
 
 #endif
@@ -87,8 +100,7 @@ typedef struct decouple_arg {
 	char	status;
 }decouple_arg;
 
-void load_driver(struct esp_driver *esp, int tile_num);
-void unload_driver(int tile_num);
+
 
 #define PRC_RECONFIGURE	_IOW(PRC_MAGIC, 0, struct pbs_arg *)
 #define DECOUPLE	_IOW(PRC_MAGIC, 1, struct pbs_arg *)

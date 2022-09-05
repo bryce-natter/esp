@@ -21,8 +21,8 @@
 #define PRC_READ(base, offset) ioread32(base.prc_base + offset)
 
 
-//static struct pbs_struct pbs_entries;
-//
+DEFINE_SPINLOCK(prc_lock);
+struct completion prc_completion;
 
 uint32_t rtile = 0;
 struct pbs_struct *curr;
@@ -33,7 +33,6 @@ struct esp_prc_device {
 	struct resource res;
 	struct module 	*module;
 	void __iomem 	*prc_base;
-	//void __iomem	*decoupler_base;
 	int		irq;
 } prc_dev;
 
@@ -56,7 +55,7 @@ static struct of_device_id esp_prc_device_ids[] = {
 	{ },
 };
 
-struct dpr_tile tiles[5] = {};
+//struct dpr_tile tiles[5] = {};
 
 void tiles_setup(void)
 {
@@ -66,13 +65,8 @@ void tiles_setup(void)
 	for(i = 0; i < 5; i++)
 	{
 		INIT_LIST_HEAD(&pbs_list[i]);
-		tiles[i].tile_num = i;
-		dphys= (unsigned long) (APB_BASE_ADDR + (MONITOR_BASE_ADDR + i * 0x200));
-		tiles[i].decoupler = ioremap(dphys, 1); 
 	}
 
-	strcpy(tiles[2].tile_id, "eb_122");
-	strcpy(tiles[4].tile_id, "eb_056");
 }
 
 static int prc_start(void)
@@ -129,47 +123,18 @@ static int prc_set_trigger(void *pbs_addr, uint32_t pbs_size)
 }
 
 
-int __decoupler(int tile, int status)
-{
-	unsigned long decoupler_phys;
-	void *decoupler;
-	int ret;
-
-	//decoupler_phys = (unsigned long) (APB_BASE_ADDR + (MONITOR_BASE_ADDR + tile_id * 0x200));
-
-	//REQUEST DECOUPLER IO REGION
-	//decoupler = ioremap(decoupler_phys, 1);
-
-	status = __cpu_to_le32(status);
-	iowrite32(status, tiles[tile].decoupler);
-	ret = ioread32(tiles[tile].decoupler);
-
-	//printk(DRV_NAME ": Reading decoupler (0x%08x -> 0x%08x, 0x%08x)\n", ret, be_ret, le_ret);
-
-	ret = ioread32(tiles[tile].decoupler);
-	//iounmap(decoupler);
-	return ret;
-}
-
-
-
-int decouple(int tile_loc)
-{
-	return __decoupler(tile_loc, 1);
-}
-
-int couple(int tile_loc)
-{
-	return __decoupler(tile_loc, 0);
-}
-
 static int prc_reconfigure(pbs_struct *pbs)
 {
 	//   int status = 0;
-	start_time = ktime_get();
 	
-	decouple(pbs->tile_id); //Signal to decouple Acc
+	//wait_for_tile(pbs->tile_id);
+	spin_lock(&prc_lock);
+	reinit_completion(&prc_completion);
+	rtile = pbs->tile_id;
 
+	start_time = ktime_get();
+
+	decouple(pbs->tile_id); //Signal to decouple Acc
 	prc_set_trigger(pbs->phys_loc, pbs->size);//pbs_id);
 
 	if(!(prc_start())) {
@@ -181,6 +146,9 @@ static int prc_reconfigure(pbs_struct *pbs)
 		pr_info(DRV_NAME ": Error reconfiguring FPGA \n");
 		return 1;
 	}
+
+	wait_for_completion_interruptible(&prc_completion);
+	spin_unlock(&prc_lock); // unlock when reconfiguration is actually done
 
 	pr_info(DRV_NAME ": Requested Reconfiguration\n");
 }
@@ -196,7 +164,6 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	struct esp_device *esp;
 	struct esp_driver *drv;
 	struct list_head *ele;
-	char *new_drv_name = "xxx_xxx"; 
 
 	/**
 	 * TODO:
@@ -258,9 +225,6 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			INIT_LIST_HEAD(&pbs_entry->list);
 
 			if (list_empty(&pbs_list[pbs_entry->tile_id])) {
-				//strcpy(pbs_entry->esp_drv->plat.driver.of_match_table[1].name, tiles[pbs_entry->tile_id].tile_id);
-				//strcat(pbs_entry->esp_drv->plat.driver.name, tiles[pbs_entry->tile_id].tile_id);
-				//esp_driver_register(pbs_entry->esp_drv);
 				load_driver(pbs_entry->esp_drv, pbs_entry->tile_id);
 				tiles[pbs_entry->tile_id].curr = pbs_entry; 
 			}
@@ -280,8 +244,8 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)){
 					pr_info("\nFound match!\n");
 					tiles[user_pbs.pbs_tile_id].next = pbs_entry;
-					rtile = user_pbs.pbs_tile_id;
 					pr_info(DRV_NAME ": unregistering %s\n", tiles[user_pbs.pbs_tile_id].curr->driver);
+					wait_for_tile(user_pbs.pbs_tile_id);
 					unload_driver(user_pbs.pbs_tile_id);
 
 					//esp_driver_unregister(tiles[user_pbs.pbs_tile_id].curr->esp_drv);
@@ -315,14 +279,13 @@ void prc_register_drv(struct work_struct * work)
 {
 	tiles[rtile].curr = tiles[rtile].next;
 	pr_info(DRV_NAME ": Current now equals -  %s\n", tiles[rtile].curr->driver);
-	//esp_driver_register(tiles[rtile].next->esp_drv);
 	load_driver(tiles[rtile].next->esp_drv, rtile);
-	//pr_info(DRV_NAME ": Driver can also monitor IRQ: %d", tiles[rtile].next->esp_drv->esp->irq);
 }
+
 //DECLARE_TASKLET(prc_register_tasklet, prc_register_drv, 0);
 
 //static struct work_struct prc_wq;
-DECLARE_WORK(prc_wq, prc_register_drv);
+//DECLARE_WORK(prc_wq, prc_register_drv);
 
 static irqreturn_t prc_irq(int irq, void *dev)
 {
@@ -331,21 +294,16 @@ static irqreturn_t prc_irq(int irq, void *dev)
 	byte3 = cpu_to_le32(byte3);
 
 	status = PRC_READ(prc_dev, 0x0);
-	//pr_info(DRV_NAME ": IRQ Triggered - Reconfiguration Complete: 0x%08x\n", status);
 
 	PRC_WRITE(prc_dev, 0x0, byte3); //clear interrupt 
-	stop_time = ktime_get();
-	couple(rtile); //recouple tile2
 
-	elapsed_time= ktime_sub(stop_time, start_time);
-	pr_info(DRV_NAME "Elapsed time: : %lldns\n",  ktime_to_ns(elapsed_time));
-        if(status == 0x07000000){
-		pr_info(DRV_NAME ": Registering new driver...\n");
-		schedule_work(&prc_wq);
-		//tasklet_schedule(&prc_register_tasklet);
-		//esp_driver_register(next->esp_drv);
-		//schedule this somewhere...
-		//curr = next; 
+	if(status == 0x07000000){
+		stop_time = ktime_get();
+		elapsed_time= ktime_sub(stop_time, start_time);
+		couple(rtile);
+		pr_info(DRV_NAME "Elapsed time: : %lldns\n",  ktime_to_ns(elapsed_time));
+		schedule_work(&tiles[rtile].reg_drv_work);
+		complete(&prc_completion);
 	}
 
 	return IRQ_HANDLED;
@@ -417,6 +375,7 @@ static int __init esp_prc_init(void)
 {
 	pr_info(DRV_NAME ": init\n");
 	tiles_setup();
+	init_completion(&prc_completion);
 	return platform_driver_probe(&esp_prc_driver, esp_prc_probe);
 }
 
