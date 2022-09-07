@@ -199,7 +199,7 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			spin_lock(&esp_drivers_lock);
 			list_for_each(ele, &esp_drivers) {
 				drv = list_entry(ele, struct esp_driver, list);
-				pr_info("Comparing [%s] with [%s]\n", drv->plat.driver.name, user_pbs.driver);
+				//pr_info("Comparing [%s] with [%s]\n", drv->plat.driver.name, user_pbs.driver);
 				if (!strcmp(drv->plat.driver.name, user_pbs.driver)) {
 					pr_info("Found %s driver in driver list\n", user_pbs.driver);
 					pbs_entry->esp_drv = drv;

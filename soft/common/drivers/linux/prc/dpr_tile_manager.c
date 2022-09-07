@@ -180,6 +180,7 @@ void wait_for_tile(int tile)
 	pr_info("STATUS: 0x%08x\n", status);
 
 	if (run) {
+		pr_info("ACC ALREADYING RUNNING, WAIT!\n");
 		wait_for_completion_interruptible(&(tiles[tile].esp_dev.completion));
 	}
 
@@ -191,8 +192,8 @@ EXPORT_SYMBOL_GPL(wait_for_tile);
 void register_tile_driver(struct work_struct * work)
 {
 	struct dpr_tile *tile = container_of(work, struct dpr_tile, reg_drv_work);
-	tile->curr = tiles->next;
-	pr_info(DRV_NAME ": Current now equals -  %s\n", tiles->curr->driver);
+	tile->curr = tile->next;
+	pr_info(DRV_NAME ": Current now equals -  %s\n", tile->curr->driver);
 	load_driver(tile->next->esp_drv, tile->tile_num);
 }
 

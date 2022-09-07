@@ -489,7 +489,7 @@ acc-driver-clean: $(ACC-driver-clean) contig-clean esp-clean esp-cache-clean
 
 acc-app: $(ACC-app)
 
-acc-app-clean: $(ACC-app-clean) test-clean libesp-clean
+acc-app-clean: $(ACC-app-clean) test-clean libesp-clean libprc-clean
 
 acc-baremetal: $(ACC-baremetal)
 
@@ -513,4 +513,6 @@ test-clean:
 libesp-clean:
 	$(QUIET_CLEAN) CROSS_COMPILE=$(CROSS_COMPILE_LINUX) BUILD_PATH=$(BUILD_DRIVERS)/libesp $(MAKE) -C $(DRV_LINUX)/libesp clean
 
-.PHONY: acc-driver acc-driver-clean acc-app acc-app-clean acc-baremetal acc -baremetal-clean probe-clean contig-clean esp-clean esp-cache-clean test-clean libesp-clean
+libprc-clean:
+	$(QUIET_CLEAN) CROSS_COMPILE=$(CROSS_COMPILE_LINUX) BUILD_PATH=$(BUILD_DRIVERS)/libprc $(MAKE) -C $(DRV_LINUX)/libprc clean
+.PHONY: acc-driver acc-driver-clean acc-app acc-app-clean acc-baremetal acc -baremetal-clean probe-clean contig-clean esp-clean esp-cache-clean test-clean libesp-clean libprc-clean
