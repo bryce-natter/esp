@@ -22,7 +22,6 @@
 
 
 DEFINE_SPINLOCK(prc_lock);
-struct completion prc_completion;
 
 uint32_t rtile = 0;
 struct pbs_struct *curr;
@@ -126,11 +125,11 @@ static int prc_set_trigger(void *pbs_addr, uint32_t pbs_size)
 static int prc_reconfigure(pbs_struct *pbs)
 {
 	//   int status = 0;
+	rtile = pbs->tile_id;
 	
 	//wait_for_tile(pbs->tile_id);
-	spin_lock(&prc_lock);
 	reinit_completion(&prc_completion);
-	rtile = pbs->tile_id;
+	spin_lock(&prc_lock);
 
 	start_time = ktime_get();
 
@@ -147,10 +146,10 @@ static int prc_reconfigure(pbs_struct *pbs)
 		return 1;
 	}
 
-	wait_for_completion_interruptible(&prc_completion);
+	wait_for_completion(&prc_completion);
 	spin_unlock(&prc_lock); // unlock when reconfiguration is actually done
 
-	pr_info(DRV_NAME ": Requested Reconfiguration\n");
+	pr_info(DRV_NAME ": Finished Reconfiguration\n");
 }
 
 
@@ -246,12 +245,14 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 					tiles[user_pbs.pbs_tile_id].next = pbs_entry;
 					pr_info(DRV_NAME ": unregistering %s\n", tiles[user_pbs.pbs_tile_id].curr->driver);
 					wait_for_tile(user_pbs.pbs_tile_id);
+					mutex_lock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
 					unload_driver(user_pbs.pbs_tile_id);
 
 					//esp_driver_unregister(tiles[user_pbs.pbs_tile_id].curr->esp_drv);
 
 					prc_reconfigure(pbs_entry);
 					//pr_info("Please register %s\n", pbs_entry->esp_drv->plat.driver.name);
+					mutex_unlock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
 					return 0;
 				}
 			}
@@ -301,9 +302,10 @@ static irqreturn_t prc_irq(int irq, void *dev)
 		stop_time = ktime_get();
 		elapsed_time= ktime_sub(stop_time, start_time);
 		couple(rtile);
-		pr_info(DRV_NAME "Elapsed time: : %lldns\n",  ktime_to_ns(elapsed_time));
+		pr_info(DRV_NAME ": Reconfigured Complete triggered\n");
+		pr_info(DRV_NAME ": Elapsed time: %lldns\n",  ktime_to_ns(elapsed_time));
 		schedule_work(&tiles[rtile].reg_drv_work);
-		complete(&prc_completion);
+		//complete(&prc_completion);
 	}
 
 	return IRQ_HANDLED;
@@ -375,7 +377,6 @@ static int __init esp_prc_init(void)
 {
 	pr_info(DRV_NAME ": init\n");
 	tiles_setup();
-	init_completion(&prc_completion);
 	return platform_driver_probe(&esp_prc_driver, esp_prc_probe);
 }
 

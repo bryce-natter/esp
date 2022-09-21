@@ -471,17 +471,26 @@ out:
 static long esp_do_ioctl(struct file *file, unsigned int cm, void __user *arg)
 {
 	struct esp_device *esp = file->private_data;
+	int ret;
+	mutex_lock(&esp->dpr_lock);
+
 
 	switch (cm) {
 	case ESP_IOC_RUN:
-		return esp_run_ioctl(esp);
+		ret = esp_run_ioctl(esp);
+		break;
 	case ESP_IOC_FLUSH:
-		return esp_flush_ioctl(esp, arg);
+		ret = esp_flush_ioctl(esp, arg);
+		break;
 	default:
 		if (cm == esp->driver->ioctl_cm)
-			return esp_access_ioctl(esp, arg);
-		return -ENOTTY;
+			ret = esp_access_ioctl(esp, arg);
+		ret = -ENOTTY;
+		break;
 	}
+	mutex_unlock(&esp->dpr_lock);
+	return ret; 
+
 }
 
 static long esp_ioctl(struct file *file, unsigned int cm, unsigned long arg)
@@ -666,7 +675,7 @@ int esp_driver_register(struct esp_driver *driver)
 		spin_lock(&esp_drivers_lock);
 		list_add(&driver->list, &esp_drivers);
 		spin_unlock(&esp_drivers_lock);
-		pr_info("Added %s to driver list...\n", driver->plat.driver.name);
+		//pr_info("Added %s to driver list...\n", driver->plat.driver.name);
 
 		driver->dpr = true;
 		return 0;

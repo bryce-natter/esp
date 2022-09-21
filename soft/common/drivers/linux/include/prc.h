@@ -68,10 +68,9 @@ struct dpr_tile {
 	struct pbs_struct	*next;
 	void			*decoupler;
 	struct completion	prc_completion;
-
-
 };
 
+extern struct completion prc_completion;
 extern struct dpr_tile tiles[5];
 
 void load_driver(struct esp_driver *esp, int tile_num);

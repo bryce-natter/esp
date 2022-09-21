@@ -96,6 +96,9 @@ struct esp_device {
         unsigned int ddr_node;
 	unsigned int in_place;
 	unsigned int reuse_factor;
+
+
+	struct mutex dpr_lock;
 };
 
 struct esp_status {

@@ -129,6 +129,8 @@ static int __exit tile_remove(struct platform_device *pdev)
 
 void unload_driver(int tile_num)
 {
+	//mutex_lock(&(tiles[tile_num].esp_dev.lock));
+	//pr_info("UNLOAD LOCK RET: %d\n", rc);
 	esp_driver_unregister(&(tiles[tile_num].esp_drv));
 
 }
@@ -169,6 +171,7 @@ EXPORT_SYMBOL_GPL(load_driver);
 void wait_for_tile(int tile)
 {
 	u32 status, run;
+	pr_info("Waiting for tile: %d\n", tile);
 
 	if(!tiles[tile].esp_dev.iomem)
 		pr_info("IOMEM NOT MAPPED...");
@@ -195,6 +198,8 @@ void register_tile_driver(struct work_struct * work)
 	tile->curr = tile->next;
 	pr_info(DRV_NAME ": Current now equals -  %s\n", tile->curr->driver);
 	load_driver(tile->next->esp_drv, tile->tile_num);
+	pr_info(DRV_NAME ": Completed Reconfiguration Cycle\n");
+	complete(&prc_completion);
 }
 
 void tiles_setup(void)
@@ -216,6 +221,7 @@ void tiles_setup(void)
 		strcpy(tiles[i].device_ids[2].compatible , "sld");
 		tiles[i].esp_drv.plat.driver.of_match_table = tiles[i].device_ids;
 
+		mutex_init(&tiles[i].esp_dev.dpr_lock);
 		init_completion(&tiles[i].prc_completion);
 	}
 
@@ -223,9 +229,13 @@ void tiles_setup(void)
 	strcpy(tiles[4].tile_id, "eb_056");
 }
 
+struct completion prc_completion;
+EXPORT_SYMBOL_GPL(prc_completion);
+
 static int __init tile_manager_init(void)
 {
 	pr_info(DRV_NAME ": init\n");
+	init_completion(&prc_completion);
 	tiles_setup();
 	return 0;
 }
