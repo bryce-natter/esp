@@ -21,7 +21,7 @@
 #define PRC_READ(base, offset) ioread32(base.prc_base + offset)
 
 
-DEFINE_SPINLOCK(prc_lock);
+DEFINE_MUTEX(prc_lock);
 
 uint32_t rtile = 0;
 struct pbs_struct *curr;
@@ -129,7 +129,7 @@ static int prc_reconfigure(pbs_struct *pbs)
 	
 	//wait_for_tile(pbs->tile_id);
 	reinit_completion(&prc_completion);
-	spin_lock(&prc_lock);
+	mutex_lock(&prc_lock);
 
 	start_time = ktime_get();
 
@@ -147,7 +147,7 @@ static int prc_reconfigure(pbs_struct *pbs)
 	}
 
 	wait_for_completion(&prc_completion);
-	spin_unlock(&prc_lock); // unlock when reconfiguration is actually done
+	mutex_unlock(&prc_lock); // unlock when reconfiguration is actually done
 
 	pr_info(DRV_NAME ": Finished Reconfiguration\n");
 }
@@ -168,6 +168,7 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	 * TODO:
 	 *	- Add remove pbs entry
 	 *	- Add return pbs_entry list
+	 *	- move cmds to seperate functions
 	 */
 	switch (cmd) {
 		case PRC_LOAD_BS:
@@ -184,7 +185,8 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			list_for_each_entry(pbs_entry, &pbs_list[user_pbs.pbs_tile_id], list){
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)) {
 					pr_info("\nAlready Loaded: %s - %s...\n", pbs_entry->name, user_pbs.name);
-					load_driver(pbs_entry->esp_drv, pbs_entry->tile_id);
+					return 0;
+					//load_driver(pbs_entry->esp_drv, pbs_entry->tile_id);
 					//return -EACCES;
 				}
 			}
@@ -196,8 +198,7 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 			pr_info("Looking for %s...\n", user_pbs.driver);
 			spin_lock(&esp_drivers_lock);
-			list_for_each(ele, &esp_drivers) {
-				drv = list_entry(ele, struct esp_driver, list);
+			list_for_each(ele, &esp_drivers) { drv = list_entry(ele, struct esp_driver, list);
 				//pr_info("Comparing [%s] with [%s]\n", drv->plat.driver.name, user_pbs.driver);
 				if (!strcmp(drv->plat.driver.name, user_pbs.driver)) {
 					pr_info("Found %s driver in driver list\n", user_pbs.driver);
@@ -223,9 +224,14 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			memcpy(pbs_entry->driver, user_pbs.driver, LEN_DRVNAME_MAX);
 			INIT_LIST_HEAD(&pbs_entry->list);
 
+			//If first pbs in list, reconfigure device to use it...
 			if (list_empty(&pbs_list[pbs_entry->tile_id])) {
-				load_driver(pbs_entry->esp_drv, pbs_entry->tile_id);
-				tiles[pbs_entry->tile_id].curr = pbs_entry; 
+
+				tiles[pbs_entry->tile_id].next = pbs_entry; 
+
+				mutex_lock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
+				prc_reconfigure(pbs_entry);
+				mutex_unlock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
 			}
 
 			//Add to list:
@@ -242,6 +248,11 @@ static long esp_prc_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			list_for_each_entry(pbs_entry, &pbs_list[user_pbs.pbs_tile_id], list){
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)){
 					pr_info("\nFound match!\n");
+					if (!strcmp(tiles[user_pbs.pbs_tile_id].curr->name, pbs_entry->name)) {
+						pr_info("Tile already currently using this pbs...\n");
+						return 0;
+					}
+
 					tiles[user_pbs.pbs_tile_id].next = pbs_entry;
 					pr_info(DRV_NAME ": unregistering %s\n", tiles[user_pbs.pbs_tile_id].curr->driver);
 					wait_for_tile(user_pbs.pbs_tile_id);
@@ -275,18 +286,6 @@ static struct miscdevice esp_prc_misc_device = {
 	.name 	= DRV_NAME,
 	.fops	= &esp_prc_fops,
 };
-
-void prc_register_drv(struct work_struct * work)
-{
-	tiles[rtile].curr = tiles[rtile].next;
-	pr_info(DRV_NAME ": Current now equals -  %s\n", tiles[rtile].curr->driver);
-	load_driver(tiles[rtile].next->esp_drv, rtile);
-}
-
-//DECLARE_TASKLET(prc_register_tasklet, prc_register_drv, 0);
-
-//static struct work_struct prc_wq;
-//DECLARE_WORK(prc_wq, prc_register_drv);
 
 static irqreturn_t prc_irq(int irq, void *dev)
 {
