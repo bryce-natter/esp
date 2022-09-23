@@ -10,8 +10,6 @@
 #include <esp_probe.h>
 #include "utils/fft2_utils.h"
 
-// #define LARGE_WORKLOAD
-
 #if (FFT2_FX_WIDTH == 64)
 typedef long long token_t;
 typedef double native_t;
@@ -38,18 +36,12 @@ static unsigned DMA_WORD_PER_BEAT(unsigned _st)
 #define DEV_NAME "sld,fft2_stratus"
 
 /* <<--params-->> */
-#ifndef LARGE_WORKLOAD
 const int32_t logn_samples = 3;
+const int32_t num_samples = (1 << logn_samples);
 const int32_t num_ffts = 1;
-#else
-const int32_t logn_samples = 14;
-const int32_t num_ffts = 32;
-#endif
 const int32_t do_inverse = 0;
 const int32_t do_shift = 0;
 const int32_t scale_factor = 1;
-int32_t num_samples; // = (1 << logn_samples);
-
 int32_t len;
 
 static unsigned in_words_adj;
@@ -85,9 +77,7 @@ static int validate_buf(token_t *out, float *gold)
 	for (j = 0; j < 2 * len; j++) {
 		native_t val = fx2float(out[j], FX_IL);
 		uint32_t ival = *((uint32_t*)&val);
-#ifndef LARGE_WORKLOAD
 		printf("  GOLD[%u] = 0x%08x  :  OUT[%u] = 0x%08x\n", j, ((uint32_t*)gold)[j], j, ival);
-#endif
 		if ((fabs(gold[j] - val) / fabs(gold[j])) > ERR_TH)
 			errors++;
 	}
@@ -109,7 +99,7 @@ static void init_buf(token_t *in, float *gold)
 		float scaling_factor = (float) rand () / (float) RAND_MAX;
 		gold[j] = LO + scaling_factor * (HI - LO);
 		uint32_t ig = ((uint32_t*)gold)[j];
-		/* printf("  IN[%u] = 0x%08x\n", j, ig); */
+		printf("  IN[%u] = 0x%08x\n", j, ig);
 	}
 
 	// convert input to fixed point
@@ -137,8 +127,6 @@ int main(int argc, char * argv[])
 	unsigned coherence;
         const float ERROR_COUNT_TH = 0.001;
 
-	num_samples = (1 << logn_samples);
-	
 	len = num_ffts * (1 << logn_samples);
 	printf("logn %u nsmp %u nfft %u inv %u shft %u len %u\n", logn_samples, num_samples, num_ffts, do_inverse, do_shift, len);
 	if (DMA_WORD_PER_BEAT(sizeof(token_t)) == 0) {
@@ -195,17 +183,13 @@ int main(int argc, char * argv[])
 		printf("  ptable = %p\n", ptable);
 		printf("  nchunk = %lu\n", NCHUNK(mem_size));
 
-		{
-			/* TODO: Restore full test once ESP caches are integrated */
-			coherence = ACC_COH_NONE;
-
-/*#ifndef __riscv
+#ifndef __riscv
 		for (coherence = ACC_COH_NONE; coherence <= ACC_COH_FULL; coherence++) {
 #else
 		{
-*/			/* TODO: Restore full test once ESP caches are integrated */
-/*			coherence = ACC_COH_NONE;
-#endif*/
+			/* TODO: Restore full test once ESP caches are integrated */
+			coherence = ACC_COH_NONE;
+#endif
 			printf("  --------------------\n");
 			printf("  Generate input...\n");
 			init_buf(mem, gold);

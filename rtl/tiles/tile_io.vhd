@@ -625,10 +625,10 @@ begin
         clk_div  => pllclk,
         lock     => dco_clk_lock);
 
-    dco_freq_sel <= tile_config(ESP_CSR_DCO_CFG_MSB - 4 - 0  downto ESP_CSR_DCO_CFG_MSB - 4 - 0  - 1);
-    dco_div_sel  <= tile_config(ESP_CSR_DCO_CFG_MSB - 4 - 2  downto ESP_CSR_DCO_CFG_MSB - 4 - 2  - 2);
-    dco_fc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - 4 - 5  downto ESP_CSR_DCO_CFG_MSB - 4 - 5  - 5);
-    dco_cc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - 4 - 11 downto ESP_CSR_DCO_CFG_MSB - 4 - 11 - 5);
+    dco_freq_sel <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 0  downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 0  - 1);
+    dco_div_sel  <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 2  downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 2  - 2);
+    dco_fc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 5  downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 5  - 5);
+    dco_cc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 11 downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS - 11 - 5);
     dco_clk_sel  <= tile_config(ESP_CSR_DCO_CFG_LSB + 1);
     dco_en       <= raw_rstn and tile_config(ESP_CSR_DCO_CFG_LSB);
 
@@ -1065,44 +1065,6 @@ begin
   noc_apbo(4).pindex <= 4;
 
   -----------------------------------------------------------------------------
-  -- APB 127: apb2axi 
-  -----------------------------------------------------------------------------
-  apb2axil_1: apb2axil
-    port map (
-      clk               => clk,
-      rstn              => rst,
-      paddr             => noc_apbi.paddr,
-      penable           => noc_apbi.penable,
-      psel              => noc_apbi.psel(127),
-      pwdata            => noc_apbi.pwdata,
-      pwrite            => noc_apbi.pwrite,
-      prdata            => noc_apbo(127).prdata,
-      pready            => prc_pready,            -- prc_pready -->axil_rvalid      
-      pslverr           => open,                  -- temporary assignement
-      s_axil_awvalid    => s_axil_awvalid,  
-      s_axil_awready    => s_axil_awready,
-      s_axil_awaddr     => s_axil_awaddr,
-      s_axil_wvalid     => s_axil_wvalid,
-      s_axil_wready     => s_axil_wready,
-      s_axil_wdata      => s_axil_wdata,
-      s_axil_wstrb      => s_axil_wstrb,
-      s_axil_arvalid    => s_axil_arvalid,
-      s_axil_arready    => s_axil_arready,
-      s_axil_araddr     => s_axil_araddr,
-      s_axil_rvalid     => s_axil_rvalid,
-      s_axil_rready     => s_axil_rready,
-      s_axil_rdata      => s_axil_rdata,
-      s_axil_rresp      => s_axil_rresp,
-      s_axil_bvalid     => s_axil_bvalid,
-      s_axil_bready     => s_axil_bready,
-      s_axil_bresp      => s_axil_bresp);
-
-  noc_apbo(127).pirq <= (CFG_PRC_IRQ => vsm_VS_0_sw_startup_req, others => '0'); --connect PRC interrupt
-  -- tie off the other apbo signals
-  noc_apbo(127).pconfig <= fixed_apbo_pconfig(127);
-  noc_apbo(127).pindex <= 127;
-
-  -----------------------------------------------------------------------------
   -- APB 13: DVI
   -----------------------------------------------------------------------------
 
@@ -1448,7 +1410,7 @@ begin
       srst => open,
       apbi => noc_apbi,
       apbo => noc_apbo(0),
-      prc_interrupt => vsm_VS_0_sw_startup_req --to be removed after submission
+      prc_interrupt => vsm_VS_0_sw_startup_req 
     );
 
   -- PRC 
@@ -1456,7 +1418,7 @@ begin
   prc_1: prc_inst
     port map (
       clk                       => clk,
-      reset                     => rst,                 --check reset polarity
+      reset                     => rst,
       m_axi_mem_araddr          => m_axi_mem_araddr,
       m_axi_mem_arlen           => m_axi_mem_arlen,
       m_axi_mem_arsize          => m_axi_mem_arsize,
@@ -1507,8 +1469,6 @@ begin
     s_axil_araddr_masked <= s_axil_araddr and prc_mask;
     s_axil_awaddr_masked <= s_axil_awaddr and prc_mask;
 
-  --vsm_VS_0_sw_startup_req <= '1';
-  --tile_config(0) <= vsm_VS_0_sw_startup_req;
   -- ICAP3 instance
   icap_inst_1: icap
     generic map (
@@ -1522,12 +1482,12 @@ begin
       icap_avail    => icap_avail,
       icap_prdone   => icap_prdone,
       icap_prerror  => icap_prerror);
- end generate generate_prc;
-
+  
   axi2noc_1: axislv2noc
     generic map (
       tech             => CFG_FABTECH,
       nmst             => 1,
+      split_transaction => SPLIT_TRANS,
       retarget_for_dma => 1,    --enable retarget_for_dma
       mem_axi_port     => 0,
       mem_num          => CFG_NSLM_TILE + CFG_NSLMDDR_TILE + CFG_NMEM_TILE,
@@ -1568,6 +1528,44 @@ begin
       m_axi_mem_rresp                   <= somi(0).r.resp;
       m_axi_mem_rlast                   <= somi(0).r.last;
       m_axi_mem_rvalid                  <= somi(0).r.valid;
+  
+  -----------------------------------------------------------------------------
+  -- APB 127: apb2axi 
+  -----------------------------------------------------------------------------
+  apb2axil_1: apb2axil
+    port map (
+      clk               => clk,
+      rstn              => rst,
+      paddr             => noc_apbi.paddr,
+      penable           => noc_apbi.penable,
+      psel              => noc_apbi.psel(127),
+      pwdata            => noc_apbi.pwdata,
+      pwrite            => noc_apbi.pwrite,
+      prdata            => noc_apbo(127).prdata,
+      pready            => prc_pready,      
+      pslverr           => open,
+      s_axil_awvalid    => s_axil_awvalid,  
+      s_axil_awready    => s_axil_awready,
+      s_axil_awaddr     => s_axil_awaddr,
+      s_axil_wvalid     => s_axil_wvalid,
+      s_axil_wready     => s_axil_wready,
+      s_axil_wdata      => s_axil_wdata,
+      s_axil_wstrb      => s_axil_wstrb,
+      s_axil_arvalid    => s_axil_arvalid,
+      s_axil_arready    => s_axil_arready,
+      s_axil_araddr     => s_axil_araddr,
+      s_axil_rvalid     => s_axil_rvalid,
+      s_axil_rready     => s_axil_rready,
+      s_axil_rdata      => s_axil_rdata,
+      s_axil_rresp      => s_axil_rresp,
+      s_axil_bvalid     => s_axil_bvalid,
+      s_axil_bready     => s_axil_bready,
+      s_axil_bresp      => s_axil_bresp);
+
+  noc_apbo(127).pirq <= (CFG_PRC_IRQ => vsm_VS_0_sw_startup_req, others => '0'); --connect PRC interrupt
+  noc_apbo(127).pconfig <= fixed_apbo_pconfig(127);
+  noc_apbo(127).pindex <= 127;
+ end generate generate_prc;
 
 -----------------------------------------------------------------------------
   -- Tile queues

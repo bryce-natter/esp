@@ -366,10 +366,10 @@ begin
         clk_div  => pllclk,
         lock     => dco_clk_lock);
 
-    dco_freq_sel <= tile_config(ESP_CSR_DCO_CFG_MSB - 4  - 0  downto ESP_CSR_DCO_CFG_MSB - 4  - 0  - 1);
-    dco_div_sel  <= tile_config(ESP_CSR_DCO_CFG_MSB - 4  - 2  downto ESP_CSR_DCO_CFG_MSB - 4  - 2  - 2);
-    dco_fc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - 4  - 5  downto ESP_CSR_DCO_CFG_MSB - 4  - 5  - 5);
-    dco_cc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - 4  - 11 downto ESP_CSR_DCO_CFG_MSB - 4  - 11 - 5);
+    dco_freq_sel <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 0  downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 0  - 1);
+    dco_div_sel  <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 2  downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 2  - 2);
+    dco_fc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 5  downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 5  - 5);
+    dco_cc_sel   <= tile_config(ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 11 downto ESP_CSR_DCO_CFG_MSB - DCO_CFG_LPDDR_CTRL_BITS  - 11 - 5);
     dco_clk_sel  <= tile_config(ESP_CSR_DCO_CFG_LSB  + 1);
     dco_en       <= raw_rstn and tile_config(ESP_CSR_DCO_CFG_LSB);
 
@@ -949,6 +949,7 @@ begin
         generic map (
           tech         => CFG_FABTECH,
           nmst         => 3,
+          split_transaction   => 0,
           retarget_for_dma => 0,
           mem_axi_port => 1,
           mem_num      => CFG_NMEM_TILE,
@@ -994,6 +995,7 @@ begin
         generic map (
           tech         => CFG_FABTECH,
           nmst         => 3,
+          split_transaction   => 0,
           retarget_for_dma => 0,
           mem_axi_port => 1,
           mem_num      => CFG_NMEM_TILE,
@@ -1028,6 +1030,7 @@ begin
       generic map (
         tech         => CFG_FABTECH,
         nmst         => 2,
+        split_transaction   => 0,
         retarget_for_dma => 0,
         mem_axi_port => -1,
         mem_num      => CFG_NSLM_TILE + CFG_NSLMDDR_TILE,
