@@ -122,7 +122,7 @@ int prc_reconfigure(pbs_struct *pbs)
 	}
 
 	pr_info(DRV_NAME ": Started Reconfiguration... waiting for completion... \n");
-	//wait_for_completion_interruptible_timeout(&prc_completion, 12000);
+	wait_for_completion_interruptible_timeout(&prc_completion, 12000);
 	mutex_unlock(&prc_lock); // unlock when reconfiguration is actually done
 
 	pr_info(DRV_NAME ": Finished Reconfiguration\n");

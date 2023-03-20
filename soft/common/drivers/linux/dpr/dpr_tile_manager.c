@@ -311,7 +311,7 @@ static long esp_dpr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 				tiles[pbs_entry->tile_id].next = pbs_entry; 
 
 				mutex_lock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
-				//prc_reconfigure(pbs_entry);
+				prc_reconfigure(pbs_entry);
 				load_driver(pbs_entry->esp_drv, 2);
 				mutex_unlock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
 			}
@@ -330,6 +330,8 @@ static long esp_dpr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			}
 			list_for_each_entry(pbs_entry, &pbs_list[user_pbs.pbs_tile_id], list){
 				if(pbs_entry->tile_id == user_pbs.pbs_tile_id && !strcmp(pbs_entry->name, user_pbs.name)){
+					pr_info("\npbs_entry.name: %s!\n", pbs_entry->name);
+					pr_info("\nTile currently using: %s!\n", tiles[user_pbs.pbs_tile_id].curr->name);
 					pr_info("\nFound match!\n");
 					if (!strcmp(tiles[user_pbs.pbs_tile_id].curr->name, pbs_entry->name)) {
 						pr_info("Tile already currently using this pbs...\n");
