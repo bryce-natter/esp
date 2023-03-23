@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2022 Columbia University, System Level Design Group
+ * Copyright (c) 2011-2023 Columbia University, System Level Design Group
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -51,11 +51,7 @@ struct esp_access {
 #define LLC_SIZE 524288
 #define LLC_SIZE_SPLIT 262144 
 
-extern struct esp_driver *prc_fir_driver;
-extern struct esp_driver *prc_mac_driver;
-extern struct platform_device *pd;
 
-extern bool prc_loaded;
 extern spinlock_t esp_drivers_lock;
 extern struct list_head esp_drivers;
 
@@ -96,9 +92,6 @@ struct esp_device {
         unsigned int ddr_node;
 	unsigned int in_place;
 	unsigned int reuse_factor;
-
-
-	struct mutex dpr_lock;
 };
 
 struct esp_status {

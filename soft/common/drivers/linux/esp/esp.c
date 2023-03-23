@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2022 Columbia University, System Level Design Group
+ * Copyright (c) 2011-2023 Columbia University, System Level Design Group
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -472,8 +472,7 @@ static long esp_do_ioctl(struct file *file, unsigned int cm, void __user *arg)
 {
 	struct esp_device *esp = file->private_data;
 	int ret;
-	mutex_lock(&esp->dpr_lock);
-
+	mutex_lock(&esp->lock);
 
 	switch (cm) {
 	case ESP_IOC_RUN:
@@ -488,7 +487,7 @@ static long esp_do_ioctl(struct file *file, unsigned int cm, void __user *arg)
 		ret = -ENOTTY;
 		break;
 	}
-	mutex_unlock(&esp->dpr_lock);
+	mutex_unlock(&esp->lock);
 	return ret; 
 
 }
@@ -587,22 +586,13 @@ int esp_device_register(struct esp_device *esp, struct platform_device *pdev)
 	/* set type of coherence to no coherence by default */
 	esp->coherence = ACC_COH_NONE;
 
-	dev_info(esp->pdev, "l2_size: %zu, llc_size %zu, llc_banks: %lu.\n"
-			"iomem:%lu devno: %lu\n"
-			"footprint:%d inplace: %d\n",
-		cache_l2_size, cache_llc_size, cache_llc_banks, 
-		esp->iomem, esp->driver->devno,
-		esp->footprint, esp->in_place);
+	dev_info(esp->pdev, "l2_size: %zu, llc_size %zu, llc_banks: %lu.\n",
+		cache_l2_size, cache_llc_size, cache_llc_banks);
 
 	/* Add device to ESP devices list */
 	spin_lock(&esp_devices_lock);
 	list_add(&esp->list, &esp_devices);
 	spin_unlock(&esp_devices_lock);
-
-	dev_info(esp->pdev, "searching tiles\n");
-	unsigned y = esp_get_y(esp);
-	unsigned x = esp_get_x(esp);
-	dev_info(esp->pdev, " on tile %d,%d\n", x, y);
 
 	dev_info(esp->pdev, "device registered.\n");
 	platform_set_drvdata(pdev, esp);
@@ -663,9 +653,6 @@ static void esp_sysfs_device_remove(struct esp_driver *drv)
 	unregister_chrdev_region(devno, ESP_MAX_DEVICES);
 }
 
-bool prc_loaded = false;
-EXPORT_SYMBOL_GPL(prc_loaded);
-
 int esp_driver_register(struct esp_driver *driver)
 {
 	struct platform_driver *plat = &driver->plat;
@@ -681,17 +668,6 @@ int esp_driver_register(struct esp_driver *driver)
 		return 0;
 	}
 
-//	if(prc_loaded && !driver->dpr) {
-//		spin_lock(&esp_drivers_lock);
-//		list_add(&driver->list, &esp_drivers);
-//		spin_unlock(&esp_drivers_lock);
-//		//pr_info("Added %s to driver list...\n", driver->plat.driver.name);
-//
-//		driver->dpr = true;
-//		return 0;
-//	}
-
-	pr_info(PFX ": Registering driver: %s\n", driver->plat.driver.name); 
 	rc = esp_sysfs_device_create(driver);
 	if (rc)
 		return rc;

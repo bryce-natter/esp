@@ -164,9 +164,6 @@ int esp_prc_probe(struct platform_device *pdev)
 	int ret;
 	int rc;
 	int irq_num;
-
-
-	prc_loaded = true; 
 	
 	ret = misc_register(&esp_prc_misc_device);
 	ret = of_address_to_resource(pdev->dev.of_node, 0, &prc_dev.res);
@@ -188,9 +185,13 @@ int esp_prc_probe(struct platform_device *pdev)
 		goto release_mem;
 	}
 
-	irq_num = of_irq_get(pdev->dev.of_node, 0);
+//#ifndef __sparc
+	//irq_num = of_irq_get(pdev->dev.of_node, 0);
+//#else
+	irq_num = pdev->archdata.irqs[0];
+//#endif
 	pr_info("PRC found IRQ of %d\n", irq_num);
-	rc = request_irq(PRC_IRQ, prc_irq, IRQF_SHARED, DRV_NAME, pdev);
+	rc = request_irq(irq_num, prc_irq, IRQF_SHARED, DRV_NAME, pdev);
 	if (rc) {
 		pr_info(DRV_NAME ": cannot request IRQ \n");
 		goto release_mem; 

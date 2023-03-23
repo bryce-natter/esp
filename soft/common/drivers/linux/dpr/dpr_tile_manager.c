@@ -28,6 +28,10 @@
 
 //EXPORT_SYMBOL_GPL(tiles);
 
+static unsigned long num_tiles = 5;
+//module_param_named(dpr_num_tiles, num_tiles, int, S_IRUGO);
+
+//TODO: change this to dynamic
 struct list_head pbs_list[5] = {};
 struct dpr_tile tiles[5] = {}; 
 
@@ -205,7 +209,7 @@ void tiles_setup(void)
 	int i;
 	unsigned long dphys; 
 
-	for(i = 0; i < 5; i++)
+	for(i = 0; i < num_tiles; i++)
 	{
 		INIT_LIST_HEAD(&pbs_list[i]);
 		INIT_LIST_HEAD(&tiles[i].pbs_list);
@@ -220,10 +224,12 @@ void tiles_setup(void)
 		strcpy(tiles[i].device_ids[2].compatible , "sld");
 		tiles[i].esp_drv.plat.driver.of_match_table = tiles[i].device_ids;
 
-		mutex_init(&tiles[i].esp_dev.dpr_lock);
+		mutex_init(&tiles[i].esp_dev.lock);
 		init_completion(&tiles[i].prc_completion);
 	}
 
+
+	//TODO: Change these to tile num? 
 	strcpy(tiles[2].tile_id, "eb_122");
 	strcpy(tiles[4].tile_id, "eb_056");
 }
@@ -310,10 +316,10 @@ static long esp_dpr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 				tiles[pbs_entry->tile_id].next = pbs_entry; 
 
-				mutex_lock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
+				mutex_lock(&tiles[user_pbs.pbs_tile_id].esp_dev.lock);
 				prc_reconfigure(pbs_entry);
 				load_driver(pbs_entry->esp_drv, 2);
-				mutex_unlock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
+				mutex_unlock(&tiles[user_pbs.pbs_tile_id].esp_dev.lock);
 			}
 
 			//Add to list:
@@ -341,14 +347,14 @@ static long esp_dpr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 					tiles[user_pbs.pbs_tile_id].next = pbs_entry;
 					pr_info(DRV_NAME ": unregistering %s\n", tiles[user_pbs.pbs_tile_id].curr->driver);
 					wait_for_tile(user_pbs.pbs_tile_id);
-					mutex_lock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
+					mutex_lock(&tiles[user_pbs.pbs_tile_id].esp_dev.lock);
 					unload_driver(user_pbs.pbs_tile_id);
 
 					//esp_driver_unregister(tiles[user_pbs.pbs_tile_id].curr->esp_drv);
 
 					prc_reconfigure(pbs_entry);
 					//pr_info("Please register %s\n", pbs_entry->esp_drv->plat.driver.name);
-					mutex_unlock(&tiles[user_pbs.pbs_tile_id].esp_dev.dpr_lock);
+					mutex_unlock(&tiles[user_pbs.pbs_tile_id].esp_dev.lock);
 					return 0;
 				}
 			}
