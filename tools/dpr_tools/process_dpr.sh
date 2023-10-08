@@ -658,9 +658,9 @@ lut_keyword=LUTs*;
 bram_keyword=Block;
 dsp_keyword=""DSPs;
 
-LUT_TOLERANCE=700;
-BRAM_TOLERANCE=20;
-DSP_TOLERANCE=20;
+LUT_TOLERANCE=1000;
+BRAM_TOLERANCE=40;
+DSP_TOLERANCE=40;
 
 echo -e "\t DPR: Parsing synthesis report";
 for ((i=0; i<$num_acc_tiles; i++))
@@ -675,30 +675,32 @@ do
         lut=$(echo ${line} | awk '{print($5)}');
         clb=$((($lut / 8) + LUT_TOLERANCE));
         res_consumption["$i,0"]=$clb;
-        #echo "found one $lut $clb";
+        #echo "found CLB $lut $clb";
     fi;
-   
+  
+    if [[ "$device" == "xc7vx485t-ffg1761-2" ]]; then
+        if [[ "$dsp_match" == "$dsp_keyword" ]]; then
+            dsp=$(echo ${line} | awk '{print($4)}');
+            dsp=$((dsp + DSP_TOLERANCE ));
+            res_consumption["$i,2"]=$dsp;
+            #echo "found DSP $dsp";
+        fi;
+    else 
     #TODO this should be for DSP matching for VCU118 and VCu128
-    #if [[ "$dsp_aux_match" == "$dsp_keyword" ]] && [[ $dsp_match == "DSP48E2" ]]; then
-    #    dsp=$(echo ${dsp_line} | awk '{print($4)}');
-    #    dsp=$((dsp + DSP_TOLERANCE ));
-    #    res_consumption["$i,2"]=$dsp;
-    #    #echo "found one $dsp";
-    #fi;
-    
-    if [[ "$dsp_match" == "$dsp_keyword" ]]; then
-        dsp=$(echo ${line} | awk '{print($4)}');
-        dsp=$((dsp + DSP_TOLERANCE ));
-        res_consumption["$i,2"]=$dsp;
-        #echo "found one $dsp";
+        if [[ "$dsp_aux_match" == "$dsp_keyword" ]] && [[ $dsp_match == "DSP48E2" ]]; then
+            dsp=$(echo ${dsp_line} | awk '{print($4)}');
+            dsp=$((dsp + DSP_TOLERANCE ));
+            res_consumption["$i,2"]=$dsp;
+            #echo "found one $dsp";
+        fi;
     fi;
-    
+
     if [[ "$bram_aux_match" == "$bram_keyword" ]] && [[ $bram_match == "RAMB36/FIFO*" ]]; then
         bram=$(echo ${bram_line} | awk '{print($6)}');
         #bram=$(bram%.*);
         bram=$(echo $bram $BRAM_TOLERANCE | awk '{print $1 + $2}');
         res_consumption["$i,1"]=$bram;
-        #echo "found one $bram";
+        #echo "found BRAM $bram";
     fi; 
     
     dsp_aux_match=$dsp_match;
@@ -723,8 +725,14 @@ function gen_floorplan() {
     fplan_dir=$1/tools/dpr_tools/dpr_floor_planner;
 
     #TODO:type of FPGA must be a variable of $2
+    if [[ "$device" == "xc7vx485t-ffg1761-2" ]]; then
+        TARGET_DEV="VC707"
+    else
+        TARGET_DEV="VCU118"
+    fi;
+
     cd $fplan_dir;
-    make flora FPGA=VC707;
+    make flora FPGA=$TARGET_DEV;
     ./bin/flora $num_acc_tiles  $1/socs/$2/flora_input.csv $1/socs/$2/res_reqs.csv;
     cp pblocks.xdc $1/constraints/$2/;
     cd $src_dir;
@@ -821,8 +829,8 @@ elif [ "$4" == "LOAD_BS" ]; then
 
 elif [ $4 == "test" ]; then
     extract_acc $1 $2 $3
-    #extract_acc_old $1 $2 $3
-    #diff_accelerators $1 $2 $3 
+    extract_acc_old $1 $2 $3
+    diff_accelerators $1 $2 $3 
     #patch_acc_devid $1 $2 $3 $4
     #gen_bs_script $1 $2 $3 $4 
     #gen_bs_descriptor $1 $2 $3 $4
@@ -834,6 +842,7 @@ elif [ $4 == "test" ]; then
     #echo " regenarate before parse is $regenerate_fplan";
     parse_synth_report $1 $2 $3 $4
     gen_floorplan $1 $2 $3 $4;
+    #gen_impl_script $1 $2 $3 $4;
     #acc_fplan $1 $2 $3 $4;
     #echo " regenarate after parse is $regenerate_fplan";
     #gen_floorplan $1 $2 $3 $4
